@@ -82,17 +82,19 @@ android {
 val fontsDir = layout.projectDirectory.dir("src/main/assets/fonts")
 val fetchFonts by tasks.registering {
     group = "marblemd"
-    description = "Fetches OFL fonts used by MarbleMD (Vazirmatn + Noto Sans)."
+    description = "Fetches OFL fonts used by MarbleMD (Vazirmatn + Noto Sans + Lalezar)."
     outputs.files(
         fontsDir.file("Vazirmatn.ttf"),
-        fontsDir.file("NotoSans.ttf")
+        fontsDir.file("NotoSans.ttf"),
+        fontsDir.file("Lalezar.ttf")
     )
     doLast {
         val dir = fontsDir.asFile
         dir.mkdirs()
         val fonts = mapOf(
             "Vazirmatn.ttf" to "https://raw.githubusercontent.com/rastikerdar/vazirmatn/master/fonts/variable/Vazirmatn%5Bwght%5D.ttf",
-            "NotoSans.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/NotoSans%5Bwdth%2Cwght%5D.ttf"
+            "NotoSans.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/NotoSans%5Bwdth%2Cwght%5D.ttf",
+            "Lalezar.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/lalezar/Lalezar-Regular.ttf"
         )
         fonts.forEach { (name, url) ->
             val out = dir.resolve(name)

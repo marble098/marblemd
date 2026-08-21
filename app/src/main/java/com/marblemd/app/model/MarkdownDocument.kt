@@ -17,5 +17,6 @@ data class MarkdownDocument(
     val uri: Uri? = null,
     val id: String = UUID.randomUUID().toString(),
     val writable: Boolean = false,
-    val saveState: SaveState = if (uri == null) SaveState.UNSAVED else SaveState.READ_ONLY
+    val saveState: SaveState = if (uri == null) SaveState.UNSAVED else SaveState.READ_ONLY,
+    val revision: Long = 0L
 )

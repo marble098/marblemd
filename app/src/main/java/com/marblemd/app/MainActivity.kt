@@ -14,9 +14,11 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.IntentCompat
+import androidx.core.content.edit
 import androidx.lifecycle.lifecycleScope
 import com.marblemd.app.model.DirectionMode
 import com.marblemd.app.model.MarkdownDocument
+import com.marblemd.app.model.ReaderFont
 import com.marblemd.app.model.SaveState
 import com.marblemd.app.ui.ReaderScreen
 import com.marblemd.app.ui.theme.MarbleMDTheme
@@ -37,6 +39,8 @@ class MainActivity : ComponentActivity() {
     private var activeTabId by mutableStateOf(tabs.first().id)
     private var fontSizeSp by mutableFloatStateOf(18f)
     private var directionMode by mutableStateOf(DirectionMode.AUTO)
+    private var readerFont by mutableStateOf(ReaderFont.SMART)
+    private val readerPreferences by lazy { getSharedPreferences("reader_preferences", android.content.Context.MODE_PRIVATE) }
     private val saveJobs = mutableMapOf<String, Job>()
     private var saveAsTargetId: String? = null
     private val updateManager by lazy { UpdateManager(this) }
@@ -89,6 +93,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        restoreReaderPreferences()
 
         setContent {
             MarbleMDTheme {
@@ -98,13 +103,15 @@ class MainActivity : ComponentActivity() {
                     activeDocument = active,
                     fontSizeSp = fontSizeSp,
                     directionMode = directionMode,
+                    readerFont = readerFont,
                     onOpen = ::launchDocumentPicker,
                     onSelectTab = { activeTabId = it },
                     onCloseTab = ::closeTab,
                     onContentChange = { content -> updateContent(active.id, content) },
                     onRequestSaveAs = { requestSaveAs(active.id) },
-                    onFontSizeChange = { fontSizeSp = it },
-                    onDirectionChange = { directionMode = it },
+                    onFontSizeChange = ::setReaderFontSize,
+                    onDirectionChange = ::setReaderDirection,
+                    onReaderFontChange = ::setReaderFont,
                     updateState = updateUiState,
                     onCheckForUpdates = { checkForUpdates(force = true) },
                     onDownloadUpdate = { downloadAvailableUpdate() },
@@ -250,7 +257,11 @@ class MainActivity : ComponentActivity() {
             current.writable -> SaveState.SAVING
             else -> SaveState.READ_ONLY
         }
-        val updated = current.copy(content = content, saveState = nextState)
+        val updated = current.copy(
+            content = content,
+            saveState = nextState,
+            revision = current.revision + 1L
+        )
         replaceTab(updated)
 
         if (updated.uri != null && updated.writable) {
@@ -441,6 +452,31 @@ class MainActivity : ComponentActivity() {
         updateManager.launchInstaller(this, file)
     }
 
+    private fun restoreReaderPreferences() {
+        fontSizeSp = readerPreferences.getFloat(PREF_FONT_SIZE, 18f).coerceIn(12f, 34f)
+        directionMode = runCatching {
+            DirectionMode.valueOf(readerPreferences.getString(PREF_DIRECTION, null).orEmpty())
+        }.getOrDefault(DirectionMode.AUTO)
+        readerFont = runCatching {
+            ReaderFont.valueOf(readerPreferences.getString(PREF_READER_FONT, null).orEmpty())
+        }.getOrDefault(ReaderFont.SMART)
+    }
+
+    private fun setReaderFontSize(value: Float) {
+        fontSizeSp = value.coerceIn(12f, 34f)
+        readerPreferences.edit { putFloat(PREF_FONT_SIZE, fontSizeSp) }
+    }
+
+    private fun setReaderDirection(value: DirectionMode) {
+        directionMode = value
+        readerPreferences.edit { putString(PREF_DIRECTION, value.name) }
+    }
+
+    private fun setReaderFont(value: ReaderFont) {
+        readerFont = value
+        readerPreferences.edit { putString(PREF_READER_FONT, value.name) }
+    }
+
     private fun displayName(uri: Uri): String? {
         if (uri.scheme != "content") return null
         return contentResolver.query(
@@ -468,6 +504,9 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val AUTOSAVE_DEBOUNCE_MS = 550L
+        private const val PREF_FONT_SIZE = "font_size"
+        private const val PREF_DIRECTION = "direction"
+        private const val PREF_READER_FONT = "reader_font"
 
         private const val SAMPLE_MARKDOWN = """
 # MarbleMD

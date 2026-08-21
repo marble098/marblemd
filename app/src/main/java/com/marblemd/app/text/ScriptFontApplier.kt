@@ -1,11 +1,13 @@
 package com.marblemd.app.text
 
-import android.text.Spanned
+import android.graphics.Typeface
 import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.style.MetricAffectingSpan
+import com.marblemd.app.model.ReaderFont
 
 internal object ScriptFontApplier {
-    fun apply(source: Spanned, fonts: FontRegistry): Spanned {
+    fun apply(source: Spanned, fonts: FontRegistry, readerFont: ReaderFont): Spanned {
         val text = SpannableStringBuilder(source)
         if (text.isEmpty()) return text
 
@@ -16,13 +18,13 @@ internal object ScriptFontApplier {
         while (i < text.length) {
             val script = scriptAt(text, i)
             if (script != current) {
-                applyRun(text, start, i, current, fonts)
+                applyRun(text, start, i, current, fonts, readerFont)
                 start = i
                 current = script
             }
             i += Character.charCount(Character.codePointAt(text, i))
         }
-        applyRun(text, start, text.length, current, fonts)
+        applyRun(text, start, text.length, current, fonts, readerFont)
         return text
     }
 
@@ -34,20 +36,37 @@ internal object ScriptFontApplier {
         start: Int,
         end: Int,
         script: FontScript,
-        fonts: FontRegistry
+        fonts: FontRegistry,
+        readerFont: ReaderFont
     ) {
         if (start >= end || script == FontScript.SYSTEM || overlapsCode(text, start, end)) return
-        val typeface = when (script) {
-            FontScript.ARABIC -> fonts.vazirmatn
-            FontScript.GOOGLE_SANS -> fonts.notoSans
-            FontScript.SYSTEM -> return
-        }
+        val typeface = selectTypeface(script, fonts, readerFont) ?: return
         text.setSpan(
             PreservingTypefaceSpan(typeface),
             start,
             end,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
         )
+    }
+
+    private fun selectTypeface(
+        script: FontScript,
+        fonts: FontRegistry,
+        readerFont: ReaderFont
+    ): Typeface? = when (readerFont) {
+        ReaderFont.SMART -> when (script) {
+            FontScript.ARABIC -> fonts.vazirmatn
+            FontScript.GOOGLE_SANS -> fonts.notoSans
+            FontScript.SYSTEM -> null
+        }
+        ReaderFont.VAZIRMATN -> when (script) {
+            FontScript.ARABIC, FontScript.GOOGLE_SANS -> fonts.vazirmatn
+            FontScript.SYSTEM -> null
+        }
+        ReaderFont.LALEZAR -> when (script) {
+            FontScript.ARABIC, FontScript.GOOGLE_SANS -> fonts.lalezar
+            FontScript.SYSTEM -> null
+        }
     }
 
     private fun overlapsCode(text: Spanned, start: Int, end: Int): Boolean =
