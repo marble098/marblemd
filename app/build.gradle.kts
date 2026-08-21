@@ -136,6 +136,7 @@ dependencies {
     implementation("io.noties.markwon:ext-tasklist:4.6.2")
     implementation("io.noties.markwon:html:4.6.2")
     implementation("io.noties.markwon:image-coil:4.6.2")
+    implementation("io.coil-kt:coil:0.13.0")
     implementation("io.noties.markwon:linkify:4.6.2")
 
     testImplementation("junit:junit:4.13.2")
