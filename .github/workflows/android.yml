@@ -1,0 +1,94 @@
+name: Android CI • Build APKs
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marblemd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 37
+        shell: bash
+        run: yes | sdkmanager "platforms;android-37" "build-tools;36.0.0" >/dev/null
+
+      - name: Set up Gradle 9.5
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Generate ephemeral release signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -v \
+            -keystore "$RUNNER_TEMP/marblemd-ci.jks" \
+            -storepass marblemd-ci \
+            -keypass marblemd-ci \
+            -alias marblemd \
+            -keyalg RSA -keysize 3072 -validity 3650 \
+            -dname "CN=MarbleMD CI,O=MarbleMD,C=US"
+          echo "MARBLEMD_KEYSTORE=$RUNNER_TEMP/marblemd-ci.jks" >> "$GITHUB_ENV"
+          echo "MARBLEMD_STORE_PASSWORD=marblemd-ci" >> "$GITHUB_ENV"
+          echo "MARBLEMD_KEY_ALIAS=marblemd" >> "$GITHUB_ENV"
+          echo "MARBLEMD_KEY_PASSWORD=marblemd-ci" >> "$GITHUB_ENV"
+
+      - name: Unit tests
+        run: gradle --no-daemon --stacktrace testDebugUnitTest
+
+      - name: Android Lint
+        run: gradle --no-daemon --stacktrace lintDebug
+
+      - name: Build signed release APKs
+        run: gradle --no-daemon --stacktrace assembleRelease
+
+      - name: Collect architecture APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          find app/build/outputs/apk/release -type f -name '*.apk' -print -exec cp {} dist/ \;
+          # Pure Kotlin/Compose has no ABI-specific native machine code. The universal APK is canonical.
+          # If AGP optimizes away ABI-labelled duplicates, create clearly-labelled copies for distribution.
+          universal="$(find dist -type f -name '*universal*.apk' -o -name 'app-release.apk' | head -n1 || true)"
+          if [[ -n "$universal" ]]; then
+            for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+              if ! find dist -maxdepth 1 -type f -name "*${abi}*.apk" | grep -q .; then
+                cp "$universal" "dist/MarbleMD-${abi}-universal-code.apk"
+              fi
+            done
+          fi
+          sha256sum dist/*.apk > dist/SHA256SUMS.txt
+          ls -lah dist
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MarbleMD-APKs-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
