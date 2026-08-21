@@ -47,7 +47,7 @@ fun MarkdownText(
                 setPadding(dp(20f).toInt(), dp(18f).toInt(), dp(20f).toInt(), dp(64f).toInt())
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     breakStrategy = LineBreaker.BREAK_STRATEGY_HIGH_QUALITY
-                    hyphenationFrequency = LineBreaker.HYPHENATION_FREQUENCY_NORMAL
+                    hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NORMAL
                 } else {
                     configureLegacyLineBreaking()
                 }
