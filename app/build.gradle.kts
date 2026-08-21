@@ -137,6 +137,8 @@ dependencies {
     implementation("io.noties.markwon:ext-tasklist:4.6.2")
     implementation("io.noties.markwon:html:4.6.2")
     implementation("io.noties.markwon:image-coil:4.6.2")
+    // Markwon image-coil 4.6.2 is built for the Coil 0.13 API.
+    //noinspection NewerVersionAvailable
     implementation("io.coil-kt:coil:0.13.0")
     implementation("io.noties.markwon:linkify:4.6.2")
 

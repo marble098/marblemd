@@ -5,10 +5,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
 import android.net.ConnectivityManager
-import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import androidx.core.content.pm.PackageInfoCompat
 import com.marblemd.app.BuildConfig
 import kotlinx.coroutines.Dispatchers
@@ -90,9 +91,9 @@ class UpdateManager(private val context: Context) {
                 val chosen = chooseAsset(assets)
                     ?: error("No compatible APK is published for ${preferredAbi()}")
 
-                preferences.edit()
-                    .putLong(KEY_LAST_SUCCESSFUL_CHECK, System.currentTimeMillis())
-                    .apply()
+                preferences.edit {
+                    putLong(KEY_LAST_SUCCESSFUL_CHECK, System.currentTimeMillis())
+                }
 
                 if (versionCode <= BuildConfig.VERSION_CODE.toLong()) {
                     UpdateCheckResult.UpToDate
@@ -177,7 +178,7 @@ class UpdateManager(private val context: Context) {
             activity.startActivity(
                 Intent(
                     Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:${context.packageName}")
+                    "package:${context.packageName}".toUri()
                 )
             )
         }
