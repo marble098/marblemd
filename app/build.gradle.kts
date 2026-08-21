@@ -102,7 +102,13 @@ val fetchFonts by tasks.registering {
 }
 
 tasks.configureEach {
-    if (name.startsWith("merge") && name.endsWith("Assets")) dependsOn(fetchFonts)
+    val consumesGeneratedFonts =
+        (name.startsWith("merge") && name.endsWith("Assets")) ||
+            name.contains("Lint")
+
+    if (consumesGeneratedFonts) {
+        dependsOn(fetchFonts)
+    }
 }
 
 dependencies {
