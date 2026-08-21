@@ -116,6 +116,11 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
+
+    // AGP 9.x requires unique library namespaces. Keep the VectorDrawable pair
+    // on the current stable release instead of old transitive 1.0.0 artifacts.
+    implementation("androidx.vectordrawable:vectordrawable:1.2.0")
+    implementation("androidx.vectordrawable:vectordrawable-animated:1.2.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     implementation("io.noties.markwon:core:4.6.2")
