@@ -1,5 +1,8 @@
 package com.marblemd.app.ui
 
+import android.annotation.SuppressLint
+import android.graphics.text.LineBreaker
+import android.text.Layout
 import android.os.Build
 import android.util.TypedValue
 import android.view.View
@@ -42,9 +45,11 @@ fun MarkdownText(
                 textAlignment = View.TEXT_ALIGNMENT_TEXT_START
                 setLineSpacing(dp(3f), 1.12f)
                 setPadding(dp(20f).toInt(), dp(18f).toInt(), dp(20f).toInt(), dp(64f).toInt())
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    breakStrategy = android.text.Layout.BREAK_STRATEGY_HIGH_QUALITY
-                    hyphenationFrequency = android.text.Layout.HYPHENATION_FREQUENCY_NORMAL
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    breakStrategy = LineBreaker.BREAK_STRATEGY_HIGH_QUALITY
+                    hyphenationFrequency = LineBreaker.HYPHENATION_FREQUENCY_NORMAL
+                } else {
+                    configureLegacyLineBreaking()
                 }
             }
         },
@@ -75,3 +80,10 @@ fun MarkdownText(
 }
 
 private fun TextView.dp(value: Float): Float = value * resources.displayMetrics.density
+
+@SuppressLint("WrongConstant")
+private fun TextView.configureLegacyLineBreaking() {
+    // API 24-28 expose these values from Layout; API 29+ uses LineBreaker.
+    breakStrategy = Layout.BREAK_STRATEGY_HIGH_QUALITY
+    hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NORMAL
+}

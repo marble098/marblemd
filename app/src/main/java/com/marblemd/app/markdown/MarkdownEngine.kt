@@ -3,7 +3,7 @@ package com.marblemd.app.markdown
 import android.content.Context
 import android.text.Spanned
 import android.widget.TextView
-import com.squareup.picasso.Picasso
+import coil.ImageLoader
 import io.noties.markwon.Markwon
 import io.noties.markwon.MarkwonConfiguration
 import io.noties.markwon.AbstractMarkwonPlugin
@@ -13,7 +13,7 @@ import io.noties.markwon.ext.tables.TableAwareMovementMethod
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.tasklist.TaskListPlugin
 import io.noties.markwon.html.HtmlPlugin
-import io.noties.markwon.image.picasso.PicassoImagesPlugin
+import io.noties.markwon.image.coil.CoilImagesPlugin
 import io.noties.markwon.linkify.LinkifyPlugin
 import io.noties.markwon.movement.MovementMethodPlugin
 import com.marblemd.app.text.FontRegistry
@@ -27,13 +27,14 @@ internal class MarkdownEngine(
     codeBackgroundColor: Int
 ) {
     private val fonts = FontRegistry(context)
+    private val imageLoader = ImageLoader.Builder(context).build()
     private val markwon: Markwon = Markwon.builder(context)
         .usePlugin(HtmlPlugin.create())
         .usePlugin(TablePlugin.create(context))
         .usePlugin(StrikethroughPlugin.create())
         .usePlugin(TaskListPlugin.create(context))
         .usePlugin(LinkifyPlugin.create())
-        .usePlugin(PicassoImagesPlugin.create(Picasso.get()))
+        .usePlugin(CoilImagesPlugin.create(context, imageLoader))
         .usePlugin(MovementMethodPlugin.create(TableAwareMovementMethod.create()))
         .usePlugin(object : AbstractMarkwonPlugin() {
             override fun configureTheme(builder: MarkwonTheme.Builder) {
