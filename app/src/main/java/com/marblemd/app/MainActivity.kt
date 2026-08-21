@@ -111,7 +111,7 @@ class MainActivity : ComponentActivity() {
                     onRequestSaveAs = { requestSaveAs(active.id) },
                     onFontSizeChange = ::setReaderFontSize,
                     onDirectionChange = ::setReaderDirection,
-                    onReaderFontChange = ::setReaderFont,
+                    onReaderFontChange = ::applyReaderFont,
                     updateState = updateUiState,
                     onCheckForUpdates = { checkForUpdates(force = true) },
                     onDownloadUpdate = { downloadAvailableUpdate() },
@@ -472,7 +472,7 @@ class MainActivity : ComponentActivity() {
         readerPreferences.edit { putString(PREF_DIRECTION, value.name) }
     }
 
-    private fun setReaderFont(value: ReaderFont) {
+    private fun applyReaderFont(value: ReaderFont) {
         readerFont = value
         readerPreferences.edit { putString(PREF_READER_FONT, value.name) }
     }
