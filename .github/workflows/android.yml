@@ -31,9 +31,24 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android API 37
+      - name: Install Android 17 SDK
         shell: bash
-        run: yes | sdkmanager "platforms;android-37" "build-tools;36.0.0" >/dev/null
+        run: |
+          set -euo pipefail
+
+          # Android 17 / API 37 is published by sdkmanager as 37.0.
+          # Channel 3 keeps current preview SDK metadata visible on clean runners.
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --channel=3 \
+            "platform-tools" \
+            "platforms;android-37.0" \
+            "build-tools;37.0.0"
+
+          echo "Installed Android 17 packages:"
+          sdkmanager --list_installed | grep -E 'platforms;android-37|build-tools;37|platform-tools' || true
+
+          test -f "$ANDROID_SDK_ROOT/platforms/android-37.0/android.jar"
+          test -d "$ANDROID_SDK_ROOT/build-tools/37.0.0"
 
       - name: Set up Gradle 9.5
         uses: gradle/actions/setup-gradle@v4
@@ -72,9 +87,9 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           find app/build/outputs/apk/release -type f -name '*.apk' -print -exec cp {} dist/ \;
-          # Pure Kotlin/Compose has no ABI-specific native machine code. The universal APK is canonical.
-          # If AGP optimizes away ABI-labelled duplicates, create clearly-labelled copies for distribution.
-          universal="$(find dist -type f -name '*universal*.apk' -o -name 'app-release.apk' | head -n1 || true)"
+
+          # MarbleMD has no app-owned native .so code. The universal APK works on all ABIs.
+          universal="$(find dist -maxdepth 1 -type f \( -name '*universal*.apk' -o -name 'app-release.apk' \) | head -n1 || true)"
           if [[ -n "$universal" ]]; then
             for abi in arm64-v8a armeabi-v7a x86_64 x86; do
               if ! find dist -maxdepth 1 -type f -name "*${abi}*.apk" | grep -q .; then
@@ -82,6 +97,8 @@ jobs:
               fi
             done
           fi
+
+          test -n "$(find dist -maxdepth 1 -type f -name '*.apk' -print -quit)"
           sha256sum dist/*.apk > dist/SHA256SUMS.txt
           ls -lah dist
 
