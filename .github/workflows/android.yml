@@ -1,4 +1,4 @@
-name: Android CI • Build APKs
+name: Android CI • Release APKs
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: marblemd-${{ github.ref }}
@@ -35,18 +35,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          # Android 17 / API 37 is published by sdkmanager as 37.0.
-          # Channel 3 keeps current preview SDK metadata visible on clean runners.
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
           sdkmanager --channel=3 \
             "platform-tools" \
             "platforms;android-37.0" \
             "build-tools;37.0.0"
-
-          echo "Installed Android 17 packages:"
-          sdkmanager --list_installed | grep -E 'platforms;android-37|build-tools;37|platform-tools' || true
-
           test -f "$ANDROID_SDK_ROOT/platforms/android-37.0/android.jar"
           test -d "$ANDROID_SDK_ROOT/build-tools/37.0.0"
 
@@ -56,21 +49,60 @@ jobs:
           gradle-version: '9.5.0'
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
-      - name: Generate ephemeral release signing key
+      - name: Compute commit version
         shell: bash
         run: |
           set -euo pipefail
-          keytool -genkeypair -v \
-            -keystore "$RUNNER_TEMP/marblemd-ci.jks" \
-            -storepass marblemd-ci \
-            -keypass marblemd-ci \
-            -alias marblemd \
-            -keyalg RSA -keysize 3072 -validity 3650 \
-            -dname "CN=MarbleMD CI,O=MarbleMD,C=US"
-          echo "MARBLEMD_KEYSTORE=$RUNNER_TEMP/marblemd-ci.jks" >> "$GITHUB_ENV"
-          echo "MARBLEMD_STORE_PASSWORD=marblemd-ci" >> "$GITHUB_ENV"
-          echo "MARBLEMD_KEY_ALIAS=marblemd" >> "$GITHUB_ENV"
-          echo "MARBLEMD_KEY_PASSWORD=marblemd-ci" >> "$GITHUB_ENV"
+          version_code="${GITHUB_RUN_NUMBER}"
+          version_name="1.0.${version_code}"
+          tag="v${version_name}"
+          short_sha="${GITHUB_SHA:0:8}"
+          echo "MARBLEMD_VERSION_CODE=$version_code" >> "$GITHUB_ENV"
+          echo "MARBLEMD_VERSION_NAME=$version_name" >> "$GITHUB_ENV"
+          echo "MARBLEMD_RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+          echo "MARBLEMD_SHORT_SHA=$short_sha" >> "$GITHUB_ENV"
+          echo "Version: $version_name ($version_code), commit $short_sha"
+
+      - name: Prepare stable release signing
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.MARBLEMD_RELEASE_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.MARBLEMD_RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.MARBLEMD_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.MARBLEMD_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keystore="$RUNNER_TEMP/marblemd-release.p12"
+
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            keytool -genkeypair -noprompt \
+              -keystore "$keystore" \
+              -storetype PKCS12 \
+              -storepass marblemd-ci \
+              -keypass marblemd-ci \
+              -alias marblemd-ci \
+              -keyalg RSA -keysize 3072 -validity 3650 \
+              -dname "CN=MarbleMD CI,O=MarbleMD,C=US"
+            store_password="marblemd-ci"
+            key_alias="marblemd-ci"
+            key_password="marblemd-ci"
+          else
+            [[ -n "$KEYSTORE_B64" ]] || { echo "::error::Missing MARBLEMD_RELEASE_KEYSTORE_B64"; exit 1; }
+            [[ -n "$STORE_PASSWORD" ]] || { echo "::error::Missing MARBLEMD_RELEASE_STORE_PASSWORD"; exit 1; }
+            [[ -n "$KEY_ALIAS" ]] || { echo "::error::Missing MARBLEMD_RELEASE_KEY_ALIAS"; exit 1; }
+            [[ -n "$KEY_PASSWORD" ]] || { echo "::error::Missing MARBLEMD_RELEASE_KEY_PASSWORD"; exit 1; }
+
+            printf '%s' "$KEYSTORE_B64" | base64 --decode > "$keystore"
+            store_password="$STORE_PASSWORD"
+            key_alias="$KEY_ALIAS"
+            key_password="$KEY_PASSWORD"
+          fi
+
+          keytool -list -keystore "$keystore" -storepass "$store_password" -alias "$key_alias" >/dev/null
+          echo "MARBLEMD_KEYSTORE=$keystore" >> "$GITHUB_ENV"
+          echo "MARBLEMD_STORE_PASSWORD=$store_password" >> "$GITHUB_ENV"
+          echo "MARBLEMD_KEY_ALIAS=$key_alias" >> "$GITHUB_ENV"
+          echo "MARBLEMD_KEY_PASSWORD=$key_password" >> "$GITHUB_ENV"
 
       - name: Unit tests
         run: gradle --no-daemon --stacktrace testDebugUnitTest
@@ -109,31 +141,80 @@ jobs:
       - name: Build signed release APKs
         run: gradle --no-daemon --stacktrace assembleRelease
 
-      - name: Collect architecture APKs
+      - name: Prepare standalone Release assets
         shell: bash
         run: |
           set -euo pipefail
+          release_dir="app/build/outputs/apk/release"
           mkdir -p dist
-          find app/build/outputs/apk/release -type f -name '*.apk' -print -exec cp {} dist/ \;
 
-          # MarbleMD has no app-owned native .so code. The universal APK works on all ABIs.
-          universal="$(find dist -maxdepth 1 -type f \( -name '*universal*.apk' -o -name 'app-release.apk' \) | head -n1 || true)"
-          if [[ -n "$universal" ]]; then
-            for abi in arm64-v8a armeabi-v7a x86_64 x86; do
-              if ! find dist -maxdepth 1 -type f -name "*${abi}*.apk" | grep -q .; then
-                cp "$universal" "dist/MarbleMD-${abi}-universal-code.apk"
-              fi
-            done
+          universal="$(find "$release_dir" -type f \( -name '*universal*.apk' -o -name 'app-release.apk' \) -print -quit || true)"
+          if [[ -z "$universal" ]]; then
+            universal="$(find "$release_dir" -type f -name '*.apk' -print -quit || true)"
           fi
+          [[ -n "$universal" ]] || { echo "::error::No release APK produced"; exit 1; }
 
-          test -n "$(find dist -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          cp "$universal" "dist/MarbleMD-${MARBLEMD_VERSION_NAME}-universal.apk"
+
+          for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+            src="$(find "$release_dir" -type f -name "*${abi}*.apk" -print -quit || true)"
+            [[ -n "$src" ]] || src="$universal"
+            cp "$src" "dist/MarbleMD-${MARBLEMD_VERSION_NAME}-${abi}.apk"
+          done
+
+          for apk in dist/*.apk; do
+            "$ANDROID_SDK_ROOT/build-tools/37.0.0/apksigner" verify --verbose --print-certs "$apk"
+          done
+
           sha256sum dist/*.apk > dist/SHA256SUMS.txt
+
+          asset_json() {
+            local abi="$1"
+            local file="$2"
+            local hash
+            hash="$(sha256sum "dist/$file" | awk '{print $1}')"
+            printf '"%s":{"name":"%s","url":"https://github.com/%s/releases/download/%s/%s","sha256":"%s"}' \
+              "$abi" "$file" "$GITHUB_REPOSITORY" "$MARBLEMD_RELEASE_TAG" "$file" "$hash"
+          }
+
+          {
+            printf '{\n'
+            printf '  "schema":1,\n'
+            printf '  "versionCode":%s,\n' "$MARBLEMD_VERSION_CODE"
+            printf '  "versionName":"%s",\n' "$MARBLEMD_VERSION_NAME"
+            printf '  "tag":"%s",\n' "$MARBLEMD_RELEASE_TAG"
+            printf '  "commit":"%s",\n' "$GITHUB_SHA"
+            printf '  "assets":{\n'
+            printf '    '; asset_json "arm64-v8a" "MarbleMD-${MARBLEMD_VERSION_NAME}-arm64-v8a.apk"; printf ',\n'
+            printf '    '; asset_json "armeabi-v7a" "MarbleMD-${MARBLEMD_VERSION_NAME}-armeabi-v7a.apk"; printf ',\n'
+            printf '    '; asset_json "x86_64" "MarbleMD-${MARBLEMD_VERSION_NAME}-x86_64.apk"; printf ',\n'
+            printf '    '; asset_json "x86" "MarbleMD-${MARBLEMD_VERSION_NAME}-x86.apk"; printf ',\n'
+            printf '    '; asset_json "universal" "MarbleMD-${MARBLEMD_VERSION_NAME}-universal.apk"; printf '\n'
+            printf '  }\n'
+            printf '}\n'
+          } > dist/update.json
+
+          echo "Standalone release assets:"
           ls -lah dist
 
-      - name: Upload APK artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: MarbleMD-APKs-${{ github.sha }}
-          path: dist/
-          if-no-files-found: error
-          retention-days: 30
+      - name: Publish APKs directly to GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$MARBLEMD_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$MARBLEMD_RELEASE_TAG" \
+              dist/*.apk dist/SHA256SUMS.txt dist/update.json \
+              --clobber \
+              --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$MARBLEMD_RELEASE_TAG" \
+              dist/*.apk dist/SHA256SUMS.txt dist/update.json \
+              --target "$GITHUB_SHA" \
+              --title "MarbleMD ${MARBLEMD_VERSION_NAME}" \
+              --generate-notes \
+              --repo "$GITHUB_REPOSITORY"
+          fi

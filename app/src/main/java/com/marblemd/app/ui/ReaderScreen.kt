@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.FormatListBulleted
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.outlined.SystemUpdateAlt
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
@@ -37,6 +38,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -64,6 +66,8 @@ import com.marblemd.app.markdown.MarkdownOutline
 import com.marblemd.app.model.DirectionMode
 import com.marblemd.app.model.MarkdownDocument
 import com.marblemd.app.model.SaveState
+import com.marblemd.app.update.UpdateStatus
+import com.marblemd.app.update.UpdateUiState
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -80,7 +84,11 @@ fun ReaderScreen(
     onContentChange: (String) -> Unit,
     onRequestSaveAs: () -> Unit,
     onFontSizeChange: (Float) -> Unit,
-    onDirectionChange: (DirectionMode) -> Unit
+    onDirectionChange: (DirectionMode) -> Unit,
+    updateState: UpdateUiState,
+    onCheckForUpdates: () -> Unit,
+    onDownloadUpdate: () -> Unit,
+    onInstallUpdate: () -> Unit
 ) {
     var directionMenu by remember { mutableStateOf(false) }
     var fontMenu by remember { mutableStateOf(false) }
@@ -88,6 +96,7 @@ fun ReaderScreen(
     var tabsSheet by remember { mutableStateOf(false) }
     var outlineSheet by remember { mutableStateOf(false) }
     var editMode by remember(activeDocument.id) { mutableStateOf(false) }
+    var updateSheet by remember { mutableStateOf(false) }
 
     val outline = remember(activeDocument.content) {
         MarkdownOutline.parse(activeDocument.content)
@@ -133,6 +142,17 @@ fun ReaderScreen(
         )
     }
 
+
+    if (updateSheet) {
+        UpdateSheet(
+            state = updateState,
+            onDismiss = { updateSheet = false },
+            onCheck = onCheckForUpdates,
+            onDownload = onDownloadUpdate,
+            onInstall = onInstallUpdate
+        )
+    }
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -157,6 +177,22 @@ fun ReaderScreen(
                     }
                 },
                 actions = {
+                    BadgedBox(
+                        badge = {
+                            if (updateState.status == UpdateStatus.AVAILABLE ||
+                                updateState.status == UpdateStatus.READY
+                            ) {
+                                Badge()
+                            }
+                        }
+                    ) {
+                        IconButton(onClick = { updateSheet = true }) {
+                            Icon(
+                                Icons.Outlined.SystemUpdateAlt,
+                                contentDescription = "MarbleMD updates"
+                            )
+                        }
+                    }
                     IconButton(
                         onClick = { outlineSheet = true },
                         enabled = outline.isNotEmpty() && !editMode
@@ -449,6 +485,84 @@ private fun OutlineSheet(
         }
     }
 }
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun UpdateSheet(
+    state: UpdateUiState,
+    onDismiss: () -> Unit,
+    onCheck: () -> Unit,
+    onDownload: () -> Unit,
+    onInstall: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+        ) {
+            Text("MarbleMD Update", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Installed: ${state.currentVersion}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            state.latestVersion?.let { latest ->
+                Text(
+                    "Latest: $latest • ${state.architecture}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(Modifier.width(8.dp))
+            Text(
+                state.message,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(vertical = 12.dp)
+            )
+
+            if (state.status == UpdateStatus.CHECKING) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            } else if (state.status == UpdateStatus.DOWNLOADING) {
+                LinearProgressIndicator(
+                    progress = { state.progress / 100f },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    "${state.progress}%",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp, bottom = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                when (state.status) {
+                    UpdateStatus.AVAILABLE -> {
+                        TextButton(onClick = onDownload) { Text("Download update") }
+                        TextButton(onClick = onCheck) { Text("Check again") }
+                    }
+                    UpdateStatus.READY -> {
+                        TextButton(onClick = onInstall) { Text("Install update") }
+                        TextButton(onClick = onCheck) { Text("Check again") }
+                    }
+                    UpdateStatus.CHECKING,
+                    UpdateStatus.DOWNLOADING -> Unit
+                    else -> {
+                        TextButton(onClick = onCheck) { Text("Check for updates") }
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 private fun SaveState.label(): String = when (this) {
     SaveState.SAVED -> "Saved automatically"

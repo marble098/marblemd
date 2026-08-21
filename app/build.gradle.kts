@@ -5,6 +5,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val marbleVersionCode =
+    providers.environmentVariable("MARBLEMD_VERSION_CODE").orNull?.toIntOrNull() ?: 1
+val marbleVersionName =
+    providers.environmentVariable("MARBLEMD_VERSION_NAME").orNull ?: "1.0.0"
+
 android {
     namespace = "com.marblemd.app"
     compileSdk = 37
@@ -13,8 +18,8 @@ android {
         applicationId = "com.marblemd.app"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = marbleVersionCode
+        versionName = marbleVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -64,8 +69,6 @@ android {
         }
     }
 
-    // MarbleMD is pure managed code, so the universal APK already works on every Android ABI.
-    // ABI split outputs are still requested for users/distributors that prefer architecture-labelled APKs.
     splits {
         abi {
             isEnable = true
@@ -124,8 +127,6 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
 
-    // AGP 9.x requires unique library namespaces. Keep the VectorDrawable pair
-    // on the current stable release instead of old transitive 1.0.0 artifacts.
     implementation("androidx.vectordrawable:vectordrawable:1.2.0")
     implementation("androidx.vectordrawable:vectordrawable-animated:1.2.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
