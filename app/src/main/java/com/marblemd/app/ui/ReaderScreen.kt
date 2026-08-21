@@ -1,5 +1,7 @@
 package com.marblemd.app.ui
 
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -7,52 +9,129 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FolderOpen
-import androidx.compose.material.icons.outlined.Remove
+import androidx.compose.material.icons.outlined.FormatListBulleted
+import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.marblemd.app.markdown.MarkdownHeading
+import com.marblemd.app.markdown.MarkdownOutline
 import com.marblemd.app.model.DirectionMode
 import com.marblemd.app.model.MarkdownDocument
+import com.marblemd.app.model.SaveState
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderScreen(
-    document: MarkdownDocument,
+    documents: List<MarkdownDocument>,
+    activeDocument: MarkdownDocument,
     fontSizeSp: Float,
     directionMode: DirectionMode,
     onOpen: () -> Unit,
+    onSelectTab: (String) -> Unit,
+    onCloseTab: (String) -> Unit,
+    onContentChange: (String) -> Unit,
+    onRequestSaveAs: () -> Unit,
     onFontSizeChange: (Float) -> Unit,
     onDirectionChange: (DirectionMode) -> Unit
 ) {
     var directionMenu by remember { mutableStateOf(false) }
+    var fontMenu by remember { mutableStateOf(false) }
+    var pendingFontSize by remember(fontMenu, fontSizeSp) { mutableFloatStateOf(fontSizeSp) }
+    var tabsSheet by remember { mutableStateOf(false) }
+    var outlineSheet by remember { mutableStateOf(false) }
+    var editMode by remember(activeDocument.id) { mutableStateOf(false) }
+
+    val outline = remember(activeDocument.content) {
+        MarkdownOutline.parse(activeDocument.content)
+    }
+    val totalLines = remember(activeDocument.content) {
+        activeDocument.content.count { it == '\n' } + 1
+    }
+
+    val readerScrollStates = remember { mutableMapOf<String, ScrollState>() }
+    val editorScrollStates = remember { mutableMapOf<String, ScrollState>() }
+    val readerScroll = readerScrollStates.getOrPut(activeDocument.id) { ScrollState(0) }
+    val editorScroll = editorScrollStates.getOrPut(activeDocument.id) { ScrollState(0) }
+    val scope = rememberCoroutineScope()
+
+    if (tabsSheet) {
+        TabsSheet(
+            documents = documents,
+            activeId = activeDocument.id,
+            onDismiss = { tabsSheet = false },
+            onSelect = {
+                tabsSheet = false
+                onSelectTab(it)
+            },
+            onClose = onCloseTab,
+            onOpen = {
+                tabsSheet = false
+                onOpen()
+            }
+        )
+    }
+
+    if (outlineSheet) {
+        OutlineSheet(
+            headings = outline,
+            onDismiss = { outlineSheet = false },
+            onSelect = { heading ->
+                outlineSheet = false
+                val denominator = (totalLines - 1).coerceAtLeast(1)
+                val fraction = heading.lineIndex.toFloat() / denominator.toFloat()
+                val target = (readerScroll.maxValue * fraction).roundToInt()
+                scope.launch { readerScroll.animateScrollTo(target) }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -60,13 +139,13 @@ fun ReaderScreen(
                 title = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = document.title,
+                            text = activeDocument.title,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = "MarbleMD",
+                            text = activeDocument.saveState.label(),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -74,24 +153,31 @@ fun ReaderScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onOpen) {
-                        Icon(Icons.Outlined.FolderOpen, contentDescription = "Open Markdown")
+                        Icon(Icons.Outlined.FolderOpen, contentDescription = "Open Markdown files")
                     }
                 },
                 actions = {
-                    Box {
-                        IconButton(onClick = { directionMenu = true }) {
-                            Icon(Icons.Outlined.SwapHoriz, contentDescription = "Text direction")
-                        }
-                        DropdownMenu(expanded = directionMenu, onDismissRequest = { directionMenu = false }) {
-                            DirectionMode.entries.forEach { mode ->
-                                DropdownMenuItem(
-                                    text = { Text(mode.label) },
-                                    onClick = {
-                                        onDirectionChange(mode)
-                                        directionMenu = false
-                                    }
-                                )
+                    IconButton(
+                        onClick = { outlineSheet = true },
+                        enabled = outline.isNotEmpty() && !editMode
+                    ) {
+                        Icon(Icons.Outlined.FormatListBulleted, contentDescription = "Document outline")
+                    }
+                    IconButton(onClick = { editMode = !editMode }) {
+                        Icon(
+                            imageVector = if (editMode) Icons.Outlined.Visibility else Icons.Outlined.Edit,
+                            contentDescription = if (editMode) "Preview Markdown" else "Edit Markdown"
+                        )
+                    }
+                    BadgedBox(
+                        badge = {
+                            Badge {
+                                Text(documents.size.toString())
                             }
+                        }
+                    ) {
+                        IconButton(onClick = { tabsSheet = true }) {
+                            Icon(Icons.Outlined.Description, contentDescription = "Open tabs")
                         }
                     }
                 }
@@ -107,44 +193,267 @@ fun ReaderScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .padding(horizontal = 12.dp, vertical = 7.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    FilledTonalIconButton(
-                        onClick = { onFontSizeChange((fontSizeSp - 1f).coerceAtLeast(12f)) },
-                        enabled = fontSizeSp > 12f
-                    ) {
-                        Icon(Icons.Outlined.Remove, contentDescription = "Smaller text")
+                    Box {
+                        AssistChip(
+                            onClick = {
+                                pendingFontSize = fontSizeSp
+                                fontMenu = true
+                            },
+                            label = { Text("${fontSizeSp.toInt()} sp") },
+                            leadingIcon = {
+                                Icon(Icons.Outlined.TextFields, contentDescription = null)
+                            }
+                        )
+                        DropdownMenu(
+                            expanded = fontMenu,
+                            onDismissRequest = { fontMenu = false },
+                            modifier = Modifier.width(300.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
+                            ) {
+                                Text(
+                                    "Text size  ${pendingFontSize.roundToInt()} sp",
+                                    style = MaterialTheme.typography.titleSmall
+                                )
+                                Slider(
+                                    value = pendingFontSize,
+                                    onValueChange = { pendingFontSize = it },
+                                    valueRange = 12f..34f,
+                                    steps = 21,
+                                    onValueChangeFinished = {
+                                        onFontSizeChange(pendingFontSize.roundToInt().toFloat())
+                                        fontMenu = false
+                                    }
+                                )
+                                Text(
+                                    "Applied once when you release the slider",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
-                    Text("${fontSizeSp.toInt()} sp", style = MaterialTheme.typography.labelLarge)
-                    FilledTonalIconButton(
-                        onClick = { onFontSizeChange((fontSizeSp + 1f).coerceAtMost(34f)) },
-                        enabled = fontSizeSp < 34f
-                    ) {
-                        Icon(Icons.Outlined.Add, contentDescription = "Larger text")
+
+                    Box {
+                        AssistChip(
+                            onClick = { directionMenu = true },
+                            label = { Text(directionMode.label) },
+                            leadingIcon = {
+                                Icon(Icons.Outlined.SwapHoriz, contentDescription = null)
+                            }
+                        )
+                        DropdownMenu(
+                            expanded = directionMenu,
+                            onDismissRequest = { directionMenu = false }
+                        ) {
+                            DirectionMode.entries.forEach { mode ->
+                                DropdownMenuItem(
+                                    text = { Text(mode.label) },
+                                    onClick = {
+                                        onDirectionChange(mode)
+                                        directionMenu = false
+                                    }
+                                )
+                            }
+                        }
                     }
+
                     Spacer(Modifier.weight(1f))
-                    AssistChip(
-                        onClick = { directionMenu = true },
-                        label = { Text(directionMode.label) },
-                        leadingIcon = { Icon(Icons.Outlined.Description, contentDescription = null) }
+
+                    if (
+                        activeDocument.uri == null ||
+                        !activeDocument.writable ||
+                        activeDocument.saveState == SaveState.ERROR
+                    ) {
+                        TextButton(onClick = onRequestSaveAs) {
+                            Icon(Icons.Outlined.Save, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Save as")
+                        }
+                    }
+                }
+            }
+
+            HorizontalDivider()
+
+            if (editMode) {
+                MarkdownEditor(
+                    markdown = activeDocument.content,
+                    onMarkdownChange = onContentChange,
+                    scrollState = editorScroll,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(readerScroll)
+                ) {
+                    MarkdownText(
+                        markdown = activeDocument.content,
+                        fontSizeSp = fontSizeSp,
+                        directionMode = directionMode,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
-            HorizontalDivider()
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-            ) {
-                MarkdownText(
-                    markdown = document.content,
-                    fontSizeSp = fontSizeSp,
-                    directionMode = directionMode,
-                    modifier = Modifier.fillMaxWidth()
+        }
+    }
+}
+
+@Composable
+private fun MarkdownEditor(
+    markdown: String,
+    onMarkdownChange: (String) -> Unit,
+    scrollState: ScrollState,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(horizontal = 18.dp, vertical = 16.dp)
+        ) {
+            BasicTextField(
+                value = markdown,
+                onValueChange = onMarkdownChange,
+                modifier = Modifier.fillMaxWidth(),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    color = colors.onSurface,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 16.sp,
+                    lineHeight = 24.sp
+                ),
+                cursorBrush = SolidColor(colors.primary)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TabsSheet(
+    documents: List<MarkdownDocument>,
+    activeId: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+    onClose: (String) -> Unit,
+    onOpen: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Text(
+            text = "Open Markdown tabs",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+        )
+
+        LazyColumn {
+            items(documents, key = { it.id }) { document ->
+                ListItem(
+                    modifier = Modifier.clickable { onSelect(document.id) },
+                    leadingContent = {
+                        Icon(
+                            if (document.id == activeId) Icons.Outlined.CheckCircle else Icons.Outlined.Description,
+                            contentDescription = null
+                        )
+                    },
+                    headlineContent = {
+                        Text(
+                            document.title,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    supportingContent = {
+                        Text(document.saveState.label())
+                    },
+                    trailingContent = {
+                        IconButton(onClick = { onClose(document.id) }) {
+                            Icon(Icons.Outlined.Close, contentDescription = "Close tab")
+                        }
+                    }
                 )
+            }
+
+            item {
+                TextButton(
+                    onClick = onOpen,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Outlined.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Open more Markdown files")
+                }
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OutlineSheet(
+    headings: List<MarkdownHeading>,
+    onDismiss: () -> Unit,
+    onSelect: (MarkdownHeading) -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Text(
+            text = "Smart outline",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+        )
+        Text(
+            text = "${headings.size} headings detected",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 20.dp)
+        )
+
+        LazyColumn {
+            items(headings) { heading ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelect(heading) }
+                        .padding(
+                            start = (16 + (heading.level - 1) * 14).dp,
+                            end = 18.dp,
+                            top = 12.dp,
+                            bottom = 12.dp
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "H${heading.level}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = heading.title,
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun SaveState.label(): String = when (this) {
+    SaveState.SAVED -> "Saved automatically"
+    SaveState.SAVING -> "Saving…"
+    SaveState.UNSAVED -> "Unsaved • choose Save as"
+    SaveState.READ_ONLY -> "Read-only • Save as to edit a copy"
+    SaveState.ERROR -> "Save failed • choose Save as"
 }

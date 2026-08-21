@@ -1,9 +1,11 @@
 package com.marblemd.app.ui
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.graphics.text.LineBreaker
-import android.text.Layout
 import android.os.Build
+import android.text.Layout
+import android.text.Spanned
 import android.util.TypedValue
 import android.view.View
 import android.widget.TextView
@@ -16,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import com.marblemd.app.markdown.MarkdownEngine
 import com.marblemd.app.model.DirectionMode
+import kotlin.math.abs
 
 @Composable
 fun MarkdownText(
@@ -38,7 +41,7 @@ fun MarkdownText(
     AndroidView(
         modifier = modifier,
         factory = { ctx ->
-            TextView(ctx).apply {
+            MarkdownRenderView(ctx).apply {
                 setTextIsSelectable(true)
                 linksClickable = true
                 includeFontPadding = false
@@ -56,8 +59,23 @@ fun MarkdownText(
         update = { view ->
             view.setTextColor(textColor)
             view.setLinkTextColor(linkColor)
-            view.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp)
-            engine.applyTo(view, rendered)
+
+            val desiredPx = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP,
+                fontSizeSp,
+                view.resources.displayMetrics
+            )
+            if (abs(view.textSize - desiredPx) > 0.5f) {
+                view.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSizeSp)
+            }
+
+            // Font-size or direction changes must not re-run Markwon over a long document.
+            // `rendered` is remembered and changes only when markdown/theme rendering changes.
+            if (view.appliedRender !== rendered) {
+                engine.applyTo(view, rendered)
+                view.appliedRender = rendered
+            }
+
             when (directionMode) {
                 DirectionMode.AUTO -> {
                     view.layoutDirection = View.LAYOUT_DIRECTION_LOCALE
@@ -77,6 +95,10 @@ fun MarkdownText(
             }
         }
     )
+}
+
+private class MarkdownRenderView(context: Context) : TextView(context) {
+    var appliedRender: Spanned? = null
 }
 
 private fun TextView.dp(value: Float): Float = value * resources.displayMetrics.density
