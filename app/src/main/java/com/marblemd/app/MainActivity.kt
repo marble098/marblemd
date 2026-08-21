@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.IntentCompat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -59,7 +60,7 @@ class MainActivity : ComponentActivity() {
         when (intent?.action) {
             Intent.ACTION_VIEW -> intent.data?.let { openUri(it, persist = false) }
             Intent.ACTION_SEND -> {
-                val stream = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                val stream = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
                 when {
                     stream != null -> openUri(stream, persist = false)
                     !intent.getStringExtra(Intent.EXTRA_TEXT).isNullOrBlank() -> {

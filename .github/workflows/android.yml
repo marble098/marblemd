@@ -29,7 +29,7 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install Android 17 SDK
         shell: bash
@@ -51,7 +51,7 @@ jobs:
           test -d "$ANDROID_SDK_ROOT/build-tools/37.0.0"
 
       - name: Set up Gradle 9.5
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.5.0'
           cache-read-only: ${{ github.event_name == 'pull_request' }}
@@ -76,7 +76,35 @@ jobs:
         run: gradle --no-daemon --stacktrace testDebugUnitTest
 
       - name: Android Lint
-        run: gradle --no-daemon --stacktrace lintDebug
+        shell: bash
+        run: |
+          set +e
+          gradle --no-daemon --stacktrace lintDebug
+          rc=$?
+          set -e
+          if (( rc != 0 )); then
+            echo
+            echo "========== FULL ANDROID LINT REPORT =========="
+            report="app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt"
+            if [[ -f "$report" ]]; then
+              cat "$report"
+            else
+              find app/build -type f -name "lint-results-*.txt" -print -exec cat {} \; || true
+            fi
+            echo "==============================================="
+          fi
+          exit "$rc"
+
+      - name: Upload lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MarbleMD-Lint-${{ github.sha }}
+          path: |
+            app/build/reports/lint-results-debug.*
+            app/build/intermediates/lint_intermediate_text_report/**/lint-results-*.txt
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Build signed release APKs
         run: gradle --no-daemon --stacktrace assembleRelease
