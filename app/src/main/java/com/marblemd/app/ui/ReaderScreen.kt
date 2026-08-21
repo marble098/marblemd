@@ -5,7 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,11 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -29,7 +25,7 @@ import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FormatListBulleted
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Save
-import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SystemUpdateAlt
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.Visibility
@@ -63,11 +59,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.marblemd.app.markdown.MarkdownPlanHeading
 import com.marblemd.app.markdown.MarkdownRenderPlan
 import com.marblemd.app.model.DirectionMode
@@ -103,12 +96,9 @@ fun ReaderScreen(
     onDownloadUpdate: () -> Unit,
     onInstallUpdate: () -> Unit
 ) {
-    var directionMenu by remember { mutableStateOf(false) }
-    var fontSizeMenu by remember { mutableStateOf(false) }
-    var fontFamilyMenu by remember { mutableStateOf(false) }
-    var pendingFontSize by remember(fontSizeMenu, fontSizeSp) { mutableFloatStateOf(fontSizeSp) }
     var tabsSheet by remember { mutableStateOf(false) }
     var outlineSheet by remember { mutableStateOf(false) }
+    var readingSettingsSheet by remember { mutableStateOf(false) }
     var editMode by remember(activeDocument.id) { mutableStateOf(false) }
     var updateSheet by remember { mutableStateOf(false) }
     var moreMenu by remember { mutableStateOf(false) }
@@ -129,7 +119,7 @@ fun ReaderScreen(
         editorScrollStates.keys.retainAll(keep)
     }
 
-    LaunchedEffect(activeDocument.id, activeDocument.revision, editMode) {
+    LaunchedEffect(activeDocument.id, activeDocument.revision, editMode, markdownEngine) {
         val cached = renderPlans[activeDocument.id]
         if (!editMode && cached?.revision != activeDocument.revision) {
             renderPlans.remove(activeDocument.id)
@@ -172,6 +162,18 @@ fun ReaderScreen(
         )
     }
 
+    if (readingSettingsSheet) {
+        ReadingSettingsSheet(
+            fontSizeSp = fontSizeSp,
+            readerFont = readerFont,
+            directionMode = directionMode,
+            onDismiss = { readingSettingsSheet = false },
+            onFontSizeChange = onFontSizeChange,
+            onReaderFontChange = onReaderFontChange,
+            onDirectionChange = onDirectionChange
+        )
+    }
+
     if (updateSheet) {
         UpdateSheet(
             state = updateState,
@@ -194,7 +196,11 @@ fun ReaderScreen(
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = activeDocument.saveState.compactLabel(),
+                            text = if (editMode) {
+                                "Editing • ${activeDocument.saveState.compactLabel()}"
+                            } else {
+                                activeDocument.saveState.compactLabel()
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -206,25 +212,18 @@ fun ReaderScreen(
                     }
                 },
                 actions = {
-                    IconButton(
-                        onClick = { outlineSheet = true },
-                        enabled = activePlan?.headings?.isNotEmpty() == true && !editMode
-                    ) {
-                        Icon(Icons.Outlined.FormatListBulleted, contentDescription = "Document outline")
-                    }
-                    IconButton(onClick = { editMode = !editMode }) {
-                        Icon(
-                            imageVector = if (editMode) Icons.Outlined.Visibility else Icons.Outlined.Edit,
-                            contentDescription = if (editMode) "Preview Markdown" else "Edit Markdown"
-                        )
-                    }
                     BadgedBox(
-                        badge = { Badge { Text(documents.size.toString()) } }
+                        badge = {
+                            if (documents.size > 1) {
+                                Badge { Text(documents.size.toString()) }
+                            }
+                        }
                     ) {
                         IconButton(onClick = { tabsSheet = true }) {
                             Icon(Icons.Outlined.Description, contentDescription = "Open tabs")
                         }
                     }
+
                     Box {
                         BadgedBox(
                             badge = {
@@ -239,16 +238,77 @@ fun ReaderScreen(
                                 Icon(Icons.Outlined.MoreVert, contentDescription = "More options")
                             }
                         }
+
                         DropdownMenu(
                             expanded = moreMenu,
                             onDismissRequest = { moreMenu = false }
                         ) {
                             DropdownMenuItem(
+                                text = { Text(if (editMode) "Preview document" else "Edit Markdown") },
+                                leadingIcon = {
+                                    Icon(
+                                        if (editMode) Icons.Outlined.Visibility else Icons.Outlined.Edit,
+                                        contentDescription = null
+                                    )
+                                },
+                                onClick = {
+                                    moreMenu = false
+                                    editMode = !editMode
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = { Text("Smart outline") },
+                                leadingIcon = {
+                                    Icon(Icons.Outlined.FormatListBulleted, contentDescription = null)
+                                },
+                                enabled = activePlan?.headings?.isNotEmpty() == true && !editMode,
+                                onClick = {
+                                    moreMenu = false
+                                    outlineSheet = true
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = { Text("Reading settings") },
+                                leadingIcon = {
+                                    Icon(Icons.Outlined.TextFields, contentDescription = null)
+                                },
+                                onClick = {
+                                    moreMenu = false
+                                    readingSettingsSheet = true
+                                }
+                            )
+
+                            if (
+                                activeDocument.uri == null ||
+                                !activeDocument.writable ||
+                                activeDocument.saveState == SaveState.ERROR
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Save as") },
+                                    leadingIcon = {
+                                        Icon(Icons.Outlined.Save, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        moreMenu = false
+                                        onRequestSaveAs()
+                                    }
+                                )
+                            }
+
+                            HorizontalDivider()
+
+                            DropdownMenuItem(
                                 text = {
                                     Text(
                                         if (updateState.status == UpdateStatus.AVAILABLE ||
                                             updateState.status == UpdateStatus.READY
-                                        ) "Update available" else "Updates"
+                                        ) {
+                                            "Update available"
+                                        } else {
+                                            "Updates"
+                                        }
                                     )
                                 },
                                 leadingIcon = {
@@ -270,44 +330,6 @@ fun ReaderScreen(
                 .fillMaxSize()
                 .padding(inner)
         ) {
-            ReaderControlBar(
-                fontSizeSp = fontSizeSp,
-                pendingFontSize = pendingFontSize,
-                fontSizeMenu = fontSizeMenu,
-                fontFamilyMenu = fontFamilyMenu,
-                directionMenu = directionMenu,
-                readerFont = readerFont,
-                directionMode = directionMode,
-                showSaveAs = activeDocument.uri == null ||
-                    !activeDocument.writable ||
-                    activeDocument.saveState == SaveState.ERROR,
-                onOpenFontSize = {
-                    pendingFontSize = fontSizeSp
-                    fontSizeMenu = true
-                },
-                onDismissFontSize = { fontSizeMenu = false },
-                onPendingFontSizeChange = { pendingFontSize = it },
-                onCommitFontSize = {
-                    onFontSizeChange(pendingFontSize.roundToInt().toFloat())
-                    fontSizeMenu = false
-                },
-                onOpenFontFamily = { fontFamilyMenu = true },
-                onDismissFontFamily = { fontFamilyMenu = false },
-                onReaderFontChange = {
-                    onReaderFontChange(it)
-                    fontFamilyMenu = false
-                },
-                onOpenDirection = { directionMenu = true },
-                onDismissDirection = { directionMenu = false },
-                onDirectionChange = {
-                    onDirectionChange(it)
-                    directionMenu = false
-                },
-                onRequestSaveAs = onRequestSaveAs
-            )
-
-            HorizontalDivider()
-
             if (editMode) {
                 MarkdownEditor(
                     markdown = activeDocument.content,
@@ -335,119 +357,114 @@ fun ReaderScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ReaderControlBar(
+private fun ReadingSettingsSheet(
     fontSizeSp: Float,
-    pendingFontSize: Float,
-    fontSizeMenu: Boolean,
-    fontFamilyMenu: Boolean,
-    directionMenu: Boolean,
     readerFont: ReaderFont,
     directionMode: DirectionMode,
-    showSaveAs: Boolean,
-    onOpenFontSize: () -> Unit,
-    onDismissFontSize: () -> Unit,
-    onPendingFontSizeChange: (Float) -> Unit,
-    onCommitFontSize: () -> Unit,
-    onOpenFontFamily: () -> Unit,
-    onDismissFontFamily: () -> Unit,
+    onDismiss: () -> Unit,
+    onFontSizeChange: (Float) -> Unit,
     onReaderFontChange: (ReaderFont) -> Unit,
-    onOpenDirection: () -> Unit,
-    onDismissDirection: () -> Unit,
-    onDirectionChange: (DirectionMode) -> Unit,
-    onRequestSaveAs: () -> Unit
+    onDirectionChange: (DirectionMode) -> Unit
 ) {
-    Surface(tonalElevation = 2.dp) {
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+    var pendingSize by remember(fontSizeSp) { mutableFloatStateOf(fontSizeSp) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            item {
-                Box {
-                    AssistChip(
-                        onClick = onOpenFontSize,
-                        label = { Text("${fontSizeSp.toInt()} sp") },
-                        leadingIcon = { Icon(Icons.Outlined.TextFields, contentDescription = null) }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Outlined.Settings, contentDescription = null)
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text("Reading settings", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "Kept off the reading canvas until you need it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    DropdownMenu(
-                        expanded = fontSizeMenu,
-                        onDismissRequest = onDismissFontSize,
-                        modifier = Modifier.width(300.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)) {
+                }
+            }
+
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerLow
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
+                ) {
+                    Text(
+                        "Text size  ${pendingSize.roundToInt()} sp",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Slider(
+                        value = pendingSize,
+                        onValueChange = { pendingSize = it },
+                        valueRange = 12f..34f,
+                        steps = 21,
+                        onValueChangeFinished = {
+                            onFontSizeChange(pendingSize.roundToInt().toFloat())
+                        }
+                    )
+                    Text(
+                        "The document relayout happens once when you release the slider.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Text("Font", style = MaterialTheme.typography.labelLarge)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ReaderFont.entries.forEach { font ->
+                    AssistChip(
+                        onClick = { onReaderFontChange(font) },
+                        label = {
                             Text(
-                                "Text size  ${pendingFontSize.roundToInt()} sp",
-                                style = MaterialTheme.typography.titleSmall
+                                if (font == readerFont) "✓ ${font.shortLabel}"
+                                else font.shortLabel
                             )
-                            Slider(
-                                value = pendingFontSize,
-                                onValueChange = onPendingFontSizeChange,
-                                valueRange = 12f..34f,
-                                steps = 21,
-                                onValueChangeFinished = onCommitFontSize
-                            )
+                        }
+                    )
+                }
+            }
+
+            Text("Direction", style = MaterialTheme.typography.labelLarge)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                DirectionMode.entries.forEach { mode ->
+                    AssistChip(
+                        onClick = { onDirectionChange(mode) },
+                        label = {
                             Text(
-                                "Applied once after release",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                if (mode == directionMode) "✓ ${mode.label}"
+                                else mode.label
                             )
                         }
-                    }
+                    )
                 }
             }
 
-            item {
-                Box {
-                    AssistChip(
-                        onClick = onOpenFontFamily,
-                        label = { Text(readerFont.shortLabel) },
-                        leadingIcon = { Icon(Icons.Outlined.TextFields, contentDescription = null) }
-                    )
-                    DropdownMenu(
-                        expanded = fontFamilyMenu,
-                        onDismissRequest = onDismissFontFamily
-                    ) {
-                        ReaderFont.entries.forEach { font ->
-                            DropdownMenuItem(
-                                text = { Text(font.label) },
-                                onClick = { onReaderFontChange(font) }
-                            )
-                        }
-                    }
-                }
-            }
-
-            item {
-                Box {
-                    AssistChip(
-                        onClick = onOpenDirection,
-                        label = { Text(directionMode.label) },
-                        leadingIcon = { Icon(Icons.Outlined.SwapHoriz, contentDescription = null) }
-                    )
-                    DropdownMenu(
-                        expanded = directionMenu,
-                        onDismissRequest = onDismissDirection
-                    ) {
-                        DirectionMode.entries.forEach { mode ->
-                            DropdownMenuItem(
-                                text = { Text(mode.label) },
-                                onClick = { onDirectionChange(mode) }
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (showSaveAs) {
-                item {
-                    AssistChip(
-                        onClick = onRequestSaveAs,
-                        label = { Text("Save as") },
-                        leadingIcon = { Icon(Icons.Outlined.Save, contentDescription = null) }
-                    )
-                }
+            Spacer(Modifier.width(1.dp))
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 18.dp)
+            ) {
+                Text("Done")
             }
         }
     }
@@ -505,37 +522,6 @@ private fun PreparingDocument(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-    }
-}
-
-@Composable
-private fun MarkdownEditor(
-    markdown: String,
-    onMarkdownChange: (String) -> Unit,
-    scrollState: ScrollState,
-    modifier: Modifier = Modifier
-) {
-    val colors = MaterialTheme.colorScheme
-    Surface(modifier = modifier) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(scrollState)
-                .padding(horizontal = 18.dp, vertical = 16.dp)
-        ) {
-            BasicTextField(
-                value = markdown,
-                onValueChange = onMarkdownChange,
-                modifier = Modifier.fillMaxWidth(),
-                textStyle = MaterialTheme.typography.bodyLarge.copy(
-                    color = colors.onSurface,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 16.sp,
-                    lineHeight = 24.sp
-                ),
-                cursorBrush = SolidColor(colors.primary)
-            )
-        }
     }
 }
 
@@ -737,3 +723,4 @@ private fun formatCharacters(count: Int): String = when {
     count >= 1_000 -> String.format(Locale.US, "%.1fK chars", count / 1_000f)
     else -> "$count chars"
 }
+
