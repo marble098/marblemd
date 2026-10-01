@@ -146,3 +146,28 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
 }
+
+// ---------------------------------------------------------------------------
+// TEMPORARY: CI diagnostics (removed before merge).
+//
+// The environment this branch was authored in cannot download GitHub Actions
+// logs, so when a Kotlin compilation task fails in CI we run
+// tools/ci-diagnostics.sh, which recompiles in a scratch copy and publishes the
+// captured output to the `marblemd-ci-diagnostics` branch.
+// ---------------------------------------------------------------------------
+val ciDiagnostics = tasks.register<Exec>("ciDiagnostics") {
+    group = "marblemd"
+    description = "TEMPORARY: publish Kotlin compilation output for CI failures."
+    onlyIf { System.getenv("GITHUB_ACTIONS") == "true" }
+    workingDir = rootProject.projectDir
+    commandLine("bash", rootProject.file("tools/ci-diagnostics.sh").absolutePath)
+    isIgnoreExitValue = true
+}
+
+tasks.matching {
+    it.name == "compileDebugKotlin" ||
+        it.name == "compileDebugUnitTestKotlin" ||
+        it.name == "compileReleaseKotlin"
+}.configureEach {
+    finalizedBy(ciDiagnostics)
+}

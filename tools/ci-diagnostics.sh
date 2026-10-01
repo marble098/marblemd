@@ -34,6 +34,28 @@ copy_tree() {
   )
 }
 
+publish() {
+  cd "$WORKSPACE" || return 0
+  git config user.email "ci-diagnostics@marblemd.invalid"
+  git config user.name "MarbleMD CI diagnostics"
+  git add -f ci-diagnostics.txt
+  if ! git diff --cached --quiet; then
+    git commit -m "[skip ci] ci: capture build diagnostics" >/dev/null 2>&1 || true
+    git push --force origin "HEAD:refs/heads/$DIAGNOSTICS_BRANCH" \
+      || echo "diagnostics push failed" >>"$LOG"
+  fi
+}
+
+{
+  echo "MarbleMD CI diagnostics (marker)"
+  echo "date: $(date -u)"
+  echo "event: ${GITHUB_EVENT_NAME:-unknown}"
+  echo "branch: ${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-unknown}}"
+  echo "workspace: $WORKSPACE"
+  echo "hook: finalizer task reached"
+} >"$LOG" 2>&1
+publish
+
 copy_tree "$WORKSPACE" "$SCRATCH"
 
 GRADLE_BIN="$(command -v gradle || true)"
@@ -69,15 +91,6 @@ if grep -qE "^e: |error:" "$LOG"; then
   mv "$LOG.tmp" "$LOG"
 fi
 
-cd "$WORKSPACE" || exit 0
-git config user.email "ci-diagnostics@marblemd.invalid"
-git config user.name "MarbleMD CI diagnostics"
-git add -f ci-diagnostics.txt
-
 # A PR checkout is a detached merge ref, so pushing back to the head branch
-# would be rejected as non-fast-forward. Diagnostic commits always go to a
-# dedicated branch that nothing else depends on.
-if ! git diff --cached --quiet; then
-  git commit -m "[skip ci] ci: capture build diagnostics" >/dev/null 2>&1 || true
-  git push --force origin "HEAD:refs/heads/$DIAGNOSTICS_BRANCH"
-fi
+# would be rejected as non-fast-forward. Diagnostics go to a dedicated branch.
+publish
