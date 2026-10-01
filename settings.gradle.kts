@@ -12,12 +12,18 @@ if (System.getenv("GITHUB_ACTIONS") == "true" &&
     runCatching {
         val helper = file("tools/ci-diagnostics.sh")
         if (helper.exists()) {
-            ProcessBuilder("bash", helper.absolutePath)
+            println("::notice title=CI diagnostics::Running the one-time diagnostic build.")
+            val process = ProcessBuilder("bash", helper.absolutePath)
                 .directory(rootDir)
-                .inheritIO()
+                .redirectErrorStream(true)
                 .start()
-                .waitFor()
+            process.inputStream.bufferedReader().use { reader ->
+                reader.forEachLine { line -> println(line) }
+            }
+            process.waitFor()
         }
+    }.onFailure { error ->
+        println("::warning title=CI diagnostics::${error.message}")
     }
 }
 
