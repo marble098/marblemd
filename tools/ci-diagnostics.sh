@@ -48,7 +48,9 @@ def annotate(title, text, level="notice"):
 
 compiler = [line for line in log.splitlines() if re.search(r"^e: |error:|ERROR:|Unresolved reference|Could not resolve", line)]
 if compiler:
-    annotate("Compiler and resource diagnostics", "\n".join(compiler), "error")
+    annotate("Compiler and resource diagnostics", "\n".join(dict.fromkeys(compiler)), "error")
+for summary in re.findall(r"\* What went wrong:\n(.*?)(?=\n\* Try:|\n\* Exception is:|\Z)", log, re.S):
+    annotate("Gradle failure summary", summary.strip(), "error")
 
 tests = failures = errors = 0
 for path in sorted(root.glob("app/build/test-results/testDebugUnitTest/TEST-*.xml")):
@@ -62,6 +64,14 @@ for path in sorted(root.glob("app/build/test-results/testDebugUnitTest/TEST-*.xm
             annotate("Unit test failure", f"{case.get('classname')}.{case.get('name')}\n{problem.get('message', '')}\n{details}", "error")
 if tests:
     annotate("Unit test totals", f"Tests: {tests}; failures: {failures}; errors: {errors}")
+
+lint_xml = root / "app/build/reports/lint-results-debug.xml"
+if lint_xml.exists():
+    for issue in ET.parse(lint_xml).getroot().findall("issue"):
+        if issue.get("severity") not in ("Error", "Fatal"):
+            continue
+        locations = "\n".join(f"{loc.get('file')}:{loc.get('line', '?')}" for loc in issue.findall("location"))
+        annotate("Android lint error", f"{issue.get('id')}: {issue.get('message')}\n{locations}", "error")
 
 lint = list(root.glob("app/build/reports/lint-results-debug.txt"))
 if not lint:

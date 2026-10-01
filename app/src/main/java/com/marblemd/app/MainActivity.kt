@@ -36,6 +36,7 @@ import com.marblemd.app.text.CustomFontStore
 import com.marblemd.app.text.FontRegistry
 import com.marblemd.app.ui.ReaderScreen
 import com.marblemd.app.ui.theme.MarbleMDTheme
+import com.marblemd.app.ui.theme.withFontFamily
 import com.marblemd.app.update.UpdateCheckResult
 import com.marblemd.app.update.UpdateInfo
 import com.marblemd.app.update.UpdateManager
@@ -577,7 +578,7 @@ class MainActivity : ComponentActivity() {
         val typeface = uiFontId?.let { id -> fontRegistry.customTypeface(id) }
         val family = typeface?.let { FontFamily(it) }
         uiFontFamily = family
-        uiTypography = family?.let { Typography(defaultFontFamily = it) }
+        uiTypography = family?.let { Typography().withFontFamily(it) }
     }
 
     private fun deleteCustomFont(font: CustomFont) {
