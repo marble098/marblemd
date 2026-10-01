@@ -11,6 +11,7 @@ set -uo pipefail
 WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
 SCRATCH="${RUNNER_TEMP:-/tmp}/marblemd-diagnostics"
 LOG="$WORKSPACE/ci-diagnostics.txt"
+DIAGNOSTICS_BRANCH="marblemd-ci-diagnostics"
 
 rm -rf "$SCRATCH"
 mkdir -p "$SCRATCH"
@@ -73,10 +74,10 @@ git config user.email "ci-diagnostics@marblemd.invalid"
 git config user.name "MarbleMD CI diagnostics"
 git add -f ci-diagnostics.txt
 
+# A PR checkout is a detached merge ref, so pushing back to the head branch
+# would be rejected as non-fast-forward. Diagnostic commits always go to a
+# dedicated branch that nothing else depends on.
 if ! git diff --cached --quiet; then
   git commit -m "[skip ci] ci: capture build diagnostics" >/dev/null 2>&1 || true
-  BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
-  if [[ -n "$BRANCH" ]]; then
-    git push origin "HEAD:refs/heads/$BRANCH" >/dev/null 2>&1 || echo "diagnostics push failed"
-  fi
+  git push --force origin "HEAD:refs/heads/$DIAGNOSTICS_BRANCH"
 fi
