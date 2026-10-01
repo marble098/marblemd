@@ -114,7 +114,7 @@ fun ReaderScreen(
     onScrollTargetHandled: () -> Unit,
     onScrollPositionChange: (String, Int) -> Unit,
     onOpen: () -> Unit,
-    onNewFile: () -> Unit,
+    onNewFile: (MarkdownTemplate) -> Unit,
     onOpenRecent: (RecentDocument) -> Unit,
     onRemoveRecent: (RecentDocument) -> Unit,
     onClearRecents: () -> Unit,

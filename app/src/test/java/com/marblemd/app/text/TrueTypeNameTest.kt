@@ -43,6 +43,18 @@ class TrueTypeNameTest {
     }
 
     @Test
+    fun readsNamesWhoseStringOffsetExceedsOneByte() {
+        val font = buildFont(
+            listOf(
+                NameRecord(3, 1, nameId = 1, value = "Legacy family ".repeat(30)),
+                NameRecord(3, 1, nameId = 16, value = "Preferred Family")
+            )
+        )
+
+        assertEquals("Preferred Family", TrueTypeName.familyName(font))
+    }
+
+    @Test
     fun malformedNameTableDoesNotCrash() {
         val font = buildFont(
             listOf(NameRecord(3, 1, nameId = 1, value = "Broken")),
@@ -116,7 +128,7 @@ class TrueTypeNameTest {
             writeUInt16(record?.nameId ?: 0)
             val bytes = record?.value?.length?.times(2) ?: 0
             writeUInt16(if (index < stringOffsets.size) bytes else 0)
-            writeUInt32(stringOffsets.getOrElse(index) { 0 })
+            writeUInt16(stringOffsets.getOrElse(index) { 0 })
         }
 
         output.write(strings.toByteArray())

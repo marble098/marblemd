@@ -51,20 +51,18 @@ internal object TrueTypeName {
             val nameId = readUInt16(data, record + 6) ?: continue
             if (nameId !in 1..16) continue
             val length = readUInt16(data, record + 8) ?: continue
-            val valueOffset = readUInt32(data, record + 10) ?: continue
+            // SFNT name records are 12 bytes; their string offset is a uint16.
+            val valueOffset = readUInt16(data, record + 10) ?: continue
             val start = storage + valueOffset
             if (start < 0 || length <= 0 || start + length > data.size) continue
 
             val decoderIsUnicode = platformId == 0 || (platformId == 3 && encodingId in 0..10)
-            val decoded = if (decoderIsUnicode) {
-                decodeUtf16Be(data, start, length)
-            } else if (platformId == 1) {
-                decodeMacRoman(data, start, length)
-            } else {
-                null
-            } ?: continue
-
-            val cleaned = decoded.trim()
+            val decoded: String? = when {
+                decoderIsUnicode -> decodeUtf16Be(data, start, length)
+                platformId == 1 -> decodeMacRoman(data, start, length)
+                else -> null
+            }
+            val cleaned = decoded?.trim() ?: continue
             if (cleaned.isEmpty() || cleaned.any { it.isISOControl() }) continue
 
             // Later (higher nameId priority is handled below) - keep the first

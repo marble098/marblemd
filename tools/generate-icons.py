@@ -74,6 +74,14 @@ def with_alpha(hex_color: str, alpha: float) -> str:
     return "#{:02X}{}".format(max(0, min(255, round(alpha * 255))), hex_color.lstrip("#"))
 
 
+def opaque(hex_color: str) -> str:
+    """Strip the alpha channel: Android applies opacity via fillAlpha/strokeAlpha."""
+    value = hex_color.lstrip("#")
+    if len(value) == 8:
+        value = value[2:]
+    return "#" + value[-6:]
+
+
 def sample_gradient(stops: Sequence[tuple[float, str]], t: float) -> tuple[int, int, int]:
     t = max(0.0, min(1.0, t))
     for index in range(len(stops) - 1):
@@ -314,7 +322,7 @@ def background_shapes() -> list[Shape]:
     ]
     for index, (path, alpha, color) in enumerate(MARBLE_VEINS):
         shapes.append(
-            Shape(path=path, color=with_alpha(color, alpha), name=f"bg-vein-{index}")
+            Shape(path=path, color=color, alpha=alpha, name=f"bg-vein-{index}")
         )
     return shapes
 
@@ -353,13 +361,7 @@ def foreground_shapes() -> list[Shape]:
 def monochrome_shapes() -> list[Shape]:
     """Themed-icon silhouette: page outline, solid monogram, bidi cue."""
     return [
-        Shape(
-            path=PAGE_PATH,
-            color="#FFFFFFFF",
-            alpha=0.0,
-            stroke=4.6,
-            name="mono-page",
-        ),
+        Shape(path=PAGE_PATH, color="#FFFFFFFF", stroke=4.6, name="mono-page"),
         Shape(path=MONOGRAM_PATH, color="#FFFFFFFF", name="mono-monogram"),
         Shape(path=RTL_ARROW_PATH, color="#FFFFFFFF", name="mono-bidi-rtl"),
         Shape(path=LTR_ARROW_PATH, color="#FFFFFFFF", name="mono-bidi-ltr"),
@@ -491,9 +493,11 @@ def shape_to_xml(shape: Shape, indent: str = "    ") -> str:
             f'android:strokeWidth="{shape.stroke:g}"',
             'android:strokeLineJoin="round"',
             'android:strokeLineCap="round"',
-            f'android:strokeColor="{with_alpha(shape.color or "#FFFFFFFF", shape.alpha)}"',
-            'android:fillColor="#00000000"',
+            f'android:strokeColor="{opaque(shape.color or "#FFFFFFFF")}"',
         ]
+        if shape.alpha < 1.0:
+            attributes.append(f'android:strokeAlpha="{shape.alpha:g}"')
+        attributes.append('android:fillColor="#00000000"')
     if shape.gradient is not None:
         assert shape.start and shape.end
         items = "\n".join(
@@ -508,17 +512,19 @@ def shape_to_xml(shape: Shape, indent: str = "    ") -> str:
             f'android:endX="{shape.end[0]:g}" android:endY="{shape.end[1]:g}">\n'
             f"{items}\n"
             f"{indent}      </gradient>\n"
-            f"{indent}    </aapt:attr>\n"
+            f'{indent}    </aapt:attr>\n'
         )
     else:
         gradient = ""
     if shape.stroke is None and shape.gradient is None:
-        attributes.append(f'android:fillColor="{with_alpha(shape.color or "#00000000", shape.alpha)}"')
+        attributes.append(f'android:fillColor="{opaque(shape.color or "#00000000")}"')
+        if shape.alpha < 1.0:
+            attributes.append(f'android:fillAlpha="{shape.alpha:g}"')
     body = "".join(f"{indent}    {attribute}\n" for attribute in attributes)
     if gradient:
         # A <path> that carries an <aapt:attr> child must be closed with ">"
         # and terminated by </path>; a self-closing tag is invalid XML there.
-        return f"{indent}<path\n{body.rstrip(chr(10))}>\n{gradient}{indent}</path>\n"
+        return f"{indent}<path\n{body}    >\n{gradient}{indent}</path>\n"
     return f"{indent}<path\n{body}{indent}/>\n"
 
 
@@ -576,10 +582,10 @@ FEATURE_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 def in_app_mark() -> None:
     """Small single-colour mark used inside the app UI (tinted with the theme)."""
     shapes = [
-        Shape(path=PAGE_PATH, color="#FFFFFFFF", alpha=0.0, stroke=5.0, name="mark-page"),
+        Shape(path=PAGE_PATH, color="#FFFFFFFF", stroke=5.0, name="mark-page"),
         Shape(path=MONOGRAM_PATH, color="#FFFFFFFF", name="mark-monogram"),
-        Shape(path=RTL_ARROW_PATH, color="#FFFFFFFF", alpha=0.6, name="mark-bidi-rtl"),
-        Shape(path=LTR_ARROW_PATH, color="#FFFFFFFF", alpha=0.6, name="mark-bidi-ltr"),
+        Shape(path=RTL_ARROW_PATH, color="#FFFFFFFF", alpha=0.65, name="mark-bidi-rtl"),
+        Shape(path=LTR_ARROW_PATH, color="#FFFFFFFF", alpha=0.65, name="mark-bidi-ltr"),
     ]
     write(
         os.path.join(RES, "drawable", "ic_marblemd_mark.xml"),

@@ -1,10 +1,10 @@
 // ---------------------------------------------------------------------------
 // TEMPORARY CI diagnostics (removed before merge).
 //
-// GitHub Actions logs cannot be downloaded in the environment this branch was
-// authored in, so the build publishes its own compiler output: the helper below
-// recompiles the project in a scratch worktree and pushes the captured console
-// text to the `marblemd-ci-diagnostics` branch.
+// The Actions log host is unreachable in the authoring environment. Run a
+// one-time diagnostic build in a detached scratch worktree and expose compiler,
+// test and lint failures as annotations readable through GitHub's checks API.
+// This helper never commits or pushes to any branch.
 // ---------------------------------------------------------------------------
 if (System.getenv("GITHUB_ACTIONS") == "true" &&
     System.getenv("MARBLEMD_DIAGNOSTICS_CHILD") != "1"

@@ -79,16 +79,8 @@ internal class FontRegistry(private val context: Context) {
             Typeface.createFromFile(file)
         }.getOrNull() ?: return defaultTypeface
 
-        // The user font is the primary face; Android's multilingual stack
-        // covers whatever it does not contain.
-        return runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                Typeface.CustomFallbackBuilder(base)
-                    .setSystemFallback("sans-serif")
-                    .build()
-            } else {
-                base
-            }
-        }.getOrDefault(base)
+        // Android's own font fallback supplies whichever glyphs the user font
+        // is missing, so the typeface loaded from file is all we need.
+        return base
     }
 }

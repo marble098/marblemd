@@ -1,6 +1,6 @@
 package com.marblemd.app.editor
 
-import androidx.compose.ui.text.TextFieldValue
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

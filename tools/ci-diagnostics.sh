@@ -1,75 +1,79 @@
 #!/usr/bin/env bash
-# TEMPORARY CI diagnostics helper (removed before merge).
-#
-# Recompiles the project in a scratch git worktree and publishes the captured
-# console output to the `marblemd-ci-diagnostics` branch, so a failing build can
-# be diagnosed even when the Actions log host is unreachable.
+# TEMPORARY: expose failures through check annotations when Actions logs are
+# unreachable. No commits, pushes, or changes to the actual build workspace.
 set -uo pipefail
 
 WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
-SCRATCH="${RUNNER_TEMP:-/tmp}/marblemd-diagnostics"
-LOG="$WORKSPACE/ci-diagnostics.txt"
-DIAGNOSTICS_BRANCH="marblemd-ci-diagnostics"
+RUN_TEMP="${RUNNER_TEMP:-/tmp}"
+SCRATCH="$RUN_TEMP/marblemd-diagnostics"
+LOG="$RUN_TEMP/marblemd-diagnostics.log"
+MARKER="$RUN_TEMP/marblemd-diagnostics-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
 
-publish() {
-  cd "$WORKSPACE" || return 0
-  git config user.email "ci-diagnostics@marblemd.invalid"
-  git config user.name "MarbleMD CI diagnostics"
-  git add -f ci-diagnostics.txt
-  if ! git diff --cached --quiet; then
-    git commit -q -m "[skip ci] ci: capture build diagnostics" || true
-    git push -q --force origin "HEAD:refs/heads/$DIAGNOSTICS_BRANCH" \
-      || echo "diagnostics push failed" >>"$LOG"
-  fi
-}
+# The workflow invokes Gradle several times; diagnose just once per run.
+[[ -f "$MARKER" ]] && exit 0
+touch "$MARKER"
 
 GRADLE_BIN="$(command -v gradle || true)"
-if [[ -z "$GRADLE_BIN" ]]; then
-  GRADLE_BIN="$WORKSPACE/gradlew"
-fi
-
-{
-  echo "MarbleMD CI diagnostics"
-  echo "date: $(date -u)"
-  echo "event: ${GITHUB_EVENT_NAME:-unknown}"
-  echo "branch: ${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-unknown}}"
-  echo "workspace: $WORKSPACE"
-  echo "gradle: $GRADLE_BIN"
-  echo "java: $(command -v java || echo none)"
-  echo "git: $(git --version)"
-  echo "hook: reached settings evaluation"
-} >"$LOG" 2>&1
-publish
+[[ -n "$GRADLE_BIN" ]] || GRADLE_BIN="$WORKSPACE/gradlew"
 
 cd "$WORKSPACE" || exit 0
-
-rm -rf "$SCRATCH"
 git worktree remove --force "$SCRATCH" >/dev/null 2>&1 || true
-git worktree add --detach "$SCRATCH" HEAD >/dev/null 2>&1
-
-{
-  echo
-  echo "===== scratch worktree: $( [[ -d "$SCRATCH" ]] && echo ok || echo failed ) ====="
-  echo "===== nested Kotlin compilation ====="
-  (
-    cd "$SCRATCH" || exit 1
-    MARBLEMD_DIAGNOSTICS_CHILD=1 "$GRADLE_BIN" --no-daemon --console=plain --continue --stacktrace \
-      :app:compileDebugKotlin :app:compileDebugUnitTestKotlin 2>&1 |
-      grep -vE '^(Download |Welcome to Gradle|Starting a Gradle Daemon|Daemon will be stopped)' |
-      tail -600
-  )
-  echo "nested exit=${PIPESTATUS[0]}"
-} >>"$LOG" 2>&1
-
-if grep -qE "^e: |error:" "$LOG"; then
-  {
-    echo "===== filtered compiler errors ====="
-    grep -nE "^e: |error:|Execution failed for task|FAILURE: Build failed|Could not resolve|Unresolved reference" "$LOG" | head -120
-    echo
-    echo "===== raw tail ====="
-    tail -120 "$LOG"
-  } >"$LOG.tmp"
-  mv "$LOG.tmp" "$LOG"
+if ! git worktree add --detach "$SCRATCH" HEAD >/dev/null 2>&1; then
+  echo "::warning title=CI diagnostics::Could not create the diagnostic worktree."
+  exit 0
 fi
+trap 'cd "$WORKSPACE"; git worktree remove --force "$SCRATCH" >/dev/null 2>&1 || true' EXIT
 
-publish
+(
+  cd "$SCRATCH" || exit 1
+  timeout 20m env MARBLEMD_DIAGNOSTICS_CHILD=1 "$GRADLE_BIN" \
+    --no-daemon --console=plain --continue --stacktrace \
+    testDebugUnitTest lintDebug assembleRelease
+) >"$LOG" 2>&1
+RESULT=$?
+
+python3 - "$SCRATCH" "$LOG" "$RESULT" <<'PY'
+import pathlib
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+root, log_path, result = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), int(sys.argv[3])
+log = log_path.read_text(errors="replace")
+
+def annotate(title, text, level="notice"):
+    # Workflow command messages are limited in size and require these escapes.
+    text = text[:40000].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    print(f"::{level} title={title}::{text}", flush=True)
+
+compiler = [line for line in log.splitlines() if re.search(r"^e: |error:|ERROR:|Unresolved reference|Could not resolve", line)]
+if compiler:
+    annotate("Compiler and resource diagnostics", "\n".join(compiler), "error")
+
+tests = failures = errors = 0
+for path in sorted(root.glob("app/build/test-results/testDebugUnitTest/TEST-*.xml")):
+    suite = ET.parse(path).getroot()
+    tests += int(suite.get("tests", 0))
+    failures += int(suite.get("failures", 0))
+    errors += int(suite.get("errors", 0))
+    for case in suite.findall("testcase"):
+        for problem in list(case.findall("failure")) + list(case.findall("error")):
+            details = "\n".join((problem.text or "").splitlines()[:14])
+            annotate("Unit test failure", f"{case.get('classname')}.{case.get('name')}\n{problem.get('message', '')}\n{details}", "error")
+if tests:
+    annotate("Unit test totals", f"Tests: {tests}; failures: {failures}; errors: {errors}")
+
+lint = list(root.glob("app/build/reports/lint-results-debug.txt"))
+if not lint:
+    lint = list(root.glob("app/build/intermediates/lint_intermediate_text_report/**/lint-results-debug.txt"))
+for path in lint[:1]:
+    annotate("Android lint diagnostics", path.read_text(errors="replace"))
+
+if result:
+    annotate("Diagnostic build failure", f"Exit code: {result}\n" + "\n".join(log.splitlines()[-75:]), "error")
+else:
+    annotate("Diagnostic build passed", "Unit tests, lintDebug and assembleRelease all succeeded.\n" + "\n".join(log.splitlines()[-15:]))
+PY
+
+# Diagnostics must not change the result of the real workflow commands.
+exit 0
