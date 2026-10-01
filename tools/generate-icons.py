@@ -93,6 +93,8 @@ def rounded_rect_points(
     """Flattened outline of a rounded rectangle with an optional folded corner."""
     r = min(r, (x1 - x0) / 2.0, (y1 - y0) / 2.0)
     pts: list[tuple[float, float]] = []
+    if r <= 0:
+        return [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
 
     def arc(cx: float, cy: float, start_deg: float, end_deg: float) -> None:
         steps = 16
@@ -495,7 +497,7 @@ def shape_to_xml(shape: Shape, indent: str = "    ") -> str:
     if shape.gradient is not None:
         assert shape.start and shape.end
         items = "\n".join(
-            f'{indent}      <item android:offset="{offset:g}" '
+            f'{indent}        <item android:offset="{offset:g}" '
             f'android:color="{with_alpha(color, shape.alpha)}" />'
             for offset, color in shape.gradient
         )
@@ -510,10 +512,14 @@ def shape_to_xml(shape: Shape, indent: str = "    ") -> str:
         )
     else:
         gradient = ""
-    if shape.stroke is None:
+    if shape.stroke is None and shape.gradient is None:
         attributes.append(f'android:fillColor="{with_alpha(shape.color or "#00000000", shape.alpha)}"')
     body = "".join(f"{indent}    {attribute}\n" for attribute in attributes)
-    return f"{indent}<path\n{body}{gradient}{indent}/>\n"
+    if gradient:
+        # A <path> that carries an <aapt:attr> child must be closed with ">"
+        # and terminated by </path>; a self-closing tag is invalid XML there.
+        return f"{indent}<path\n{body.rstrip(chr(10))}>\n{gradient}{indent}</path>\n"
+    return f"{indent}<path\n{body}{indent}/>\n"
 
 
 def vector_document(
