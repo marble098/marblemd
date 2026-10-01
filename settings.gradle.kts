@@ -1,3 +1,24 @@
+// ---------------------------------------------------------------------------
+// TEMPORARY CI diagnostics (removed before merge).
+//
+// Runs the diagnostics helper synchronously during settings evaluation, so the
+// captured compiler output is published even when configuration or compilation
+// fails later in the build. The environment this branch was authored in cannot
+// download GitHub Actions logs.
+// ---------------------------------------------------------------------------
+if (System.getenv("GITHUB_ACTIONS") == "true") {
+    runCatching {
+        val helper = file("tools/ci-diagnostics.sh")
+        if (helper.exists()) {
+            ProcessBuilder("bash", helper.absolutePath)
+                .directory(rootDir)
+                .inheritIO()
+                .start()
+                .waitFor()
+        }
+    }
+}
+
 pluginManagement {
     repositories {
         google()

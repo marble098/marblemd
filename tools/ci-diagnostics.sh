@@ -73,7 +73,7 @@ fi
   echo "===== nested Kotlin compilation ====="
   (
     cd "$SCRATCH" || exit 1
-    "$GRADLE_BIN" --no-daemon --console=plain --stacktrace :app:compileDebugUnitTestKotlin 2>&1 |
+    "$GRADLE_BIN" --no-daemon --console=plain --continue --stacktrace :app:compileDebugKotlin :app:compileDebugUnitTestKotlin 2>&1 |
       grep -vE '^(Download |Welcome to Gradle|Starting a Gradle Daemon|Daemon will be stopped)' |
       tail -500
   )
