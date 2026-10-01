@@ -39,7 +39,9 @@ internal object ScriptFontApplier {
         fonts: FontRegistry,
         readerFont: ReaderFont
     ) {
-        if (start >= end || script == FontScript.SYSTEM || overlapsCode(text, start, end)) return
+        if (start >= end) return
+        if (!readerFont.isCustom && script == FontScript.SYSTEM) return
+        if (overlapsCode(text, start, end)) return
         val typeface = selectTypeface(script, fonts, readerFont) ?: return
         text.setSpan(
             PreservingTypefaceSpan(typeface),
@@ -53,19 +55,17 @@ internal object ScriptFontApplier {
         script: FontScript,
         fonts: FontRegistry,
         readerFont: ReaderFont
-    ): Typeface? = when (readerFont) {
-        ReaderFont.SMART -> when (script) {
-            FontScript.ARABIC -> fonts.vazirmatn
-            FontScript.GOOGLE_SANS -> fonts.notoSans
-            FontScript.SYSTEM -> null
+    ): Typeface? {
+        // A font the user imported is applied everywhere; Android's system
+        // fallback (wired in FontRegistry) covers glyphs it does not contain.
+        if (readerFont.isCustom) {
+            return fonts.primaryTypeface(readerFont)
         }
-        ReaderFont.VAZIRMATN -> when (script) {
-            FontScript.ARABIC, FontScript.GOOGLE_SANS -> fonts.vazirmatn
-            FontScript.SYSTEM -> null
-        }
-        ReaderFont.LALEZAR -> when (script) {
-            FontScript.ARABIC, FontScript.GOOGLE_SANS -> fonts.lalezar
-            FontScript.SYSTEM -> null
+        return when (readerFont.key) {
+            ReaderFont.KEY_SMART -> fonts.smartTypeface(script)
+            ReaderFont.KEY_VAZIRMATN -> fonts.vazirmatn
+            ReaderFont.KEY_LALEZAR -> fonts.lalezar
+            else -> fonts.smartTypeface(script)
         }
     }
 
