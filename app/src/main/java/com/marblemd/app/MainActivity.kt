@@ -131,7 +131,7 @@ class MainActivity : ComponentActivity() {
             }
             result.onSuccess { font ->
                 customFonts = fontStore.fonts()
-                setReaderFont(ReaderFont.custom(font))
+                changeReaderFont(ReaderFont.custom(font))
                 toast("«${font.displayName}» added")
             }.onFailure { error ->
                 toast(error.message ?: "That font could not be imported")
@@ -197,7 +197,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onFontSizeChange = ::setReaderFontSize,
                     onDirectionChange = ::setReaderDirection,
-                    onReaderFontChange = ::setReaderFont,
+                    onReaderFontChange = ::changeReaderFont,
                     onImportFont = { importFont.launch(arrayOf("*/*")) },
                     onDeleteFont = ::deleteCustomFont,
                     onUseFontInUi = ::setUiFont,
@@ -583,7 +583,7 @@ class MainActivity : ComponentActivity() {
 
     private fun deleteCustomFont(font: CustomFont) {
         if (readerFont.key == ReaderFont.CUSTOM_PREFIX + font.id) {
-            setReaderFont(ReaderFont.SMART)
+            changeReaderFont(ReaderFont.SMART)
         }
         if (uiFontId == font.id) {
             uiFontId = null
@@ -615,7 +615,7 @@ class MainActivity : ComponentActivity() {
         readerPreferences.edit { putString(PREF_DIRECTION, value.name) }
     }
 
-    private fun setReaderFont(value: ReaderFont) {
+    private fun changeReaderFont(value: ReaderFont) {
         readerFont = value
         readerPreferences.edit { putString(PREF_READER_FONT, value.key) }
         toast("Reading font: ${value.label}")
