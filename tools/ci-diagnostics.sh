@@ -53,7 +53,7 @@ git worktree add --detach "$SCRATCH" HEAD >/dev/null 2>&1
   echo "===== nested Kotlin compilation ====="
   (
     cd "$SCRATCH" || exit 1
-    "$GRADLE_BIN" --no-daemon --console=plain --continue --stacktrace \
+    MARBLEMD_DIAGNOSTICS_CHILD=1 "$GRADLE_BIN" --no-daemon --console=plain --continue --stacktrace \
       :app:compileDebugKotlin :app:compileDebugUnitTestKotlin 2>&1 |
       grep -vE '^(Download |Welcome to Gradle|Starting a Gradle Daemon|Daemon will be stopped)' |
       tail -600

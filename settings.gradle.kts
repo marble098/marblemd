@@ -6,7 +6,9 @@
 // recompiles the project in a scratch worktree and pushes the captured console
 // text to the `marblemd-ci-diagnostics` branch.
 // ---------------------------------------------------------------------------
-if (System.getenv("GITHUB_ACTIONS") == "true") {
+if (System.getenv("GITHUB_ACTIONS") == "true" &&
+    System.getenv("MARBLEMD_DIAGNOSTICS_CHILD") != "1"
+) {
     runCatching {
         val helper = file("tools/ci-diagnostics.sh")
         if (helper.exists()) {
