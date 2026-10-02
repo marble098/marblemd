@@ -33,7 +33,11 @@ import org.commonmark.node.Node
 import kotlin.math.abs
 
 @Composable
-internal fun rememberMarkdownEngine(readerFont: ReaderFont): MarkdownEngine {
+internal fun rememberMarkdownEngine(
+    readerFont: ReaderFont,
+    customFontPath: String?,
+    customFontVersion: Int
+): MarkdownEngine {
     val context = LocalContext.current
     val colors = MaterialTheme.colorScheme
     val textColor = colors.onSurface.toArgb()
@@ -41,14 +45,15 @@ internal fun rememberMarkdownEngine(readerFont: ReaderFont): MarkdownEngine {
     val quoteColor = colors.secondary.toArgb()
     val codeBg = colors.surfaceVariant.toArgb()
 
-    return remember(textColor, linkColor, quoteColor, codeBg, readerFont) {
+    return remember(textColor, linkColor, quoteColor, codeBg, readerFont, customFontPath, customFontVersion) {
         MarkdownEngine(
             context = context.applicationContext,
             textColor = textColor,
             linkColor = linkColor,
             quoteColor = quoteColor,
             codeBackgroundColor = codeBg,
-            readerFont = readerFont
+            readerFont = readerFont,
+            customFontPath = customFontPath
         )
     }
 }

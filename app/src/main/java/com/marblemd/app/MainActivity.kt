@@ -2,6 +2,7 @@ package com.marblemd.app
 
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -11,14 +12,18 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.IntentCompat
 import androidx.core.content.edit
 import androidx.lifecycle.lifecycleScope
+import com.marblemd.app.data.RecentDocumentsStore
 import com.marblemd.app.model.DirectionMode
 import com.marblemd.app.model.MarkdownDocument
 import com.marblemd.app.model.ReaderFont
+import com.marblemd.app.model.ReadingPosition
+import com.marblemd.app.model.RecentDocumentInfo
 import com.marblemd.app.model.SaveState
 import com.marblemd.app.ui.ReaderScreen
 import com.marblemd.app.ui.theme.MarbleMDTheme
@@ -32,6 +37,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.nio.charset.StandardCharsets
 
 class MainActivity : ComponentActivity() {
@@ -40,8 +46,17 @@ class MainActivity : ComponentActivity() {
     private var fontSizeSp by mutableFloatStateOf(18f)
     private var directionMode by mutableStateOf(DirectionMode.AUTO)
     private var readerFont by mutableStateOf(ReaderFont.SMART)
+    private var recentDocuments by mutableStateOf(emptyList<RecentDocumentInfo>())
+    private var newDocumentId by mutableStateOf<String?>(null)
+    private var customFontName by mutableStateOf<String?>(null)
+    private var customFontVersion by mutableIntStateOf(0)
+    private var fontActionMessage by mutableStateOf<String?>(null)
+    private var startupContentChanged = false
     private val readerPreferences by lazy { getSharedPreferences("reader_preferences", android.content.Context.MODE_PRIVATE) }
+    private val recentDocumentsStore by lazy { RecentDocumentsStore(this) }
+    private val customFontFile by lazy { File(filesDir, "fonts/marblemd-custom.ttf") }
     private val saveJobs = mutableMapOf<String, Job>()
+    private val recentCacheJobs = mutableMapOf<String, Job>()
     private var saveAsTargetId: String? = null
     private val updateManager by lazy { UpdateManager(this) }
     private var updateUiState by mutableStateOf(UpdateUiState())
@@ -66,6 +81,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val customFontPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) importCustomFont(uri)
+    }
+
     private val createDocument = registerForActivityResult(
         ActivityResultContracts.CreateDocument("text/markdown")
     ) { uri ->
@@ -86,6 +105,8 @@ class MainActivity : ComponentActivity() {
                 saveState = SaveState.SAVING
             )
             replaceTab(renamed)
+            rememberDocument(renamed)
+            scheduleRecentCache(renamed, immediate = true)
             scheduleAutoSave(renamed, immediate = true)
         }
     }
@@ -94,6 +115,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         restoreReaderPreferences()
+        recentDocuments = recentDocumentsStore.list()
 
         setContent {
             MarbleMDTheme {
@@ -104,14 +126,28 @@ class MainActivity : ComponentActivity() {
                     fontSizeSp = fontSizeSp,
                     directionMode = directionMode,
                     readerFont = readerFont,
+                    customFontPath = customFontFile.takeIf { it.isFile }?.absolutePath,
+                    customFontVersion = customFontVersion,
+                    customFontName = customFontName,
+                    fontActionMessage = fontActionMessage,
+                    recentDocuments = recentDocuments,
+                    activeReadingPosition = recentDocuments
+                        .firstOrNull { it.id == active.id }?.position ?: ReadingPosition(),
+                    newDocumentId = newDocumentId,
                     onOpen = ::launchDocumentPicker,
-                    onSelectTab = { activeTabId = it },
+                    onNewDocument = ::createNewDocument,
+                    onOpenRecentDocument = ::openRecentDocument,
+                    onForgetRecentDocument = ::forgetRecentDocument,
+                    onReadingPositionChange = ::saveReadingPosition,
+                    onSelectTab = ::activateTab,
                     onCloseTab = ::closeTab,
                     onContentChange = { content -> updateContent(active.id, content) },
                     onRequestSaveAs = { requestSaveAs(active.id) },
                     onFontSizeChange = ::setReaderFontSize,
                     onDirectionChange = ::setReaderDirection,
                     onReaderFontChange = ::applyReaderFont,
+                    onImportCustomFont = ::launchCustomFontPicker,
+                    onRemoveCustomFont = ::removeCustomFont,
                     updateState = updateUiState,
                     onCheckForUpdates = { checkForUpdates(force = true) },
                     onDownloadUpdate = { downloadAvailableUpdate() },
@@ -121,6 +157,9 @@ class MainActivity : ComponentActivity() {
         }
 
         consumeIntent(intent)
+        if (intent?.action != Intent.ACTION_VIEW && intent?.action != Intent.ACTION_SEND) {
+            lifecycleScope.launch { restoreLastDocument() }
+        }
         lifecycleScope.launch {
             delay(1_500L)
             checkForUpdates(force = false)
@@ -134,6 +173,12 @@ class MainActivity : ComponentActivity() {
             pendingInstallAfterPermission = null
             updateManager.launchInstaller(this, pending)
         }
+    }
+
+    override fun onStop() {
+        tabs.filter { document -> recentDocuments.any { it.id == document.id } }
+            .forEach { document -> scheduleRecentCache(document, immediate = true) }
+        super.onStop()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -190,12 +235,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openUris(uris: List<Uri>, persist: Boolean, grantFlags: Int) {
+        startupContentChanged = true
         val permissionFlags = grantFlags and (
             Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
         val writeGranted = permissionFlags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION != 0
 
-        if (persist && permissionFlags != 0) {
+        val canPersistPermission = persist ||
+            grantFlags and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION != 0
+        if (canPersistPermission && permissionFlags != 0) {
             uris.forEach { uri ->
                 runCatching {
                     contentResolver.takePersistableUriPermission(uri, permissionFlags)
@@ -225,7 +273,7 @@ class MainActivity : ComponentActivity() {
             }
 
             loaded.forEach { result ->
-                result.onSuccess(::addOrActivate)
+                result.onSuccess { document -> addOrActivate(document) }
                     .onFailure { error ->
                         addOrActivate(
                             MarkdownDocument(
@@ -238,14 +286,127 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun addOrActivate(document: MarkdownDocument) {
+    private fun addOrActivate(document: MarkdownDocument, fromRestore: Boolean = false) {
+        if (!fromRestore) startupContentChanged = true
         val existing = document.uri?.let { uri -> tabs.firstOrNull { it.uri == uri } }
         if (existing != null) {
-            activeTabId = existing.id
+            activateTab(existing.id)
             return
         }
+
+        val recentMatch = document.uri?.let(recentDocumentsStore::findByUri)
+        val opened = if (recentMatch != null && recentMatch.id != document.id) {
+            document.copy(id = recentMatch.id)
+        } else {
+            document
+        }
+        tabs = tabs + opened
+        activeTabId = opened.id
+        rememberDocument(opened)
+        scheduleRecentCache(opened, immediate = true)
+        if (opened.hasUnsavedChanges && opened.uri != null && opened.writable) {
+            scheduleAutoSave(opened, immediate = true)
+        }
+    }
+
+    private fun rememberDocument(document: MarkdownDocument, touched: Boolean = true) {
+        recentDocuments = recentDocumentsStore.remember(document, touched)
+    }
+
+    private fun activateTab(id: String) {
+        val document = tabs.firstOrNull { it.id == id } ?: return
+        startupContentChanged = true
+        activeTabId = id
+        rememberDocument(document)
+    }
+
+    private fun createNewDocument() {
+        startupContentChanged = true
+        val existingTitles = (tabs.map { it.title } + recentDocuments.map { it.title }).toSet()
+        var title = "Untitled.md"
+        var suffix = 2
+        while (title in existingTitles) {
+            title = "Untitled ($suffix).md"
+            suffix++
+        }
+        val document = MarkdownDocument(title = title, content = "")
         tabs = tabs + document
         activeTabId = document.id
+        newDocumentId = document.id
+        rememberDocument(document)
+        scheduleRecentCache(document, immediate = true)
+    }
+
+    private fun openRecentDocument(id: String) {
+        tabs.firstOrNull { it.id == id }?.let { open ->
+            activateTab(open.id)
+            return
+        }
+        startupContentChanged = true
+        val recent = recentDocuments.firstOrNull { it.id == id }
+            ?: recentDocumentsStore.findById(id)
+            ?: return
+        lifecycleScope.launch {
+            val document = withContext(Dispatchers.IO) { loadRecentDocument(recent) }
+            if (document != null) addOrActivate(document)
+        }
+    }
+
+    private fun forgetRecentDocument(id: String) {
+        recentCacheJobs.remove(id)?.cancel()
+        recentDocuments = recentDocumentsStore.remove(id)
+    }
+
+    private fun saveReadingPosition(id: String, position: ReadingPosition) {
+        recentDocuments = recentDocumentsStore.savePosition(id, position)
+    }
+
+    private suspend fun restoreLastDocument() {
+        val recent = recentDocuments.firstOrNull() ?: return
+        val document = withContext(Dispatchers.IO) { loadRecentDocument(recent) } ?: return
+        if (!startupContentChanged) addOrActivate(document, fromRestore = true)
+    }
+
+    private fun loadRecentDocument(recent: RecentDocumentInfo): MarkdownDocument? {
+        val uri = recent.uriString?.let(Uri::parse)
+        val contentFromUri = uri?.let { documentUri ->
+            runCatching {
+                contentResolver.openInputStream(documentUri)?.use { input ->
+                    input.bufferedReader(StandardCharsets.UTF_8).readText()
+                }
+            }.getOrNull()
+        }
+        val cachedContent = recentDocumentsStore.loadContent(recent.id)
+        val content = if (recent.hasUnsavedChanges || uri == null) {
+            cachedContent ?: contentFromUri
+        } else {
+            contentFromUri ?: cachedContent
+        } ?: return null
+        val canWrite = uri != null && canOpenForWrite(uri)
+        return MarkdownDocument(
+            title = recent.title,
+            content = content,
+            uri = uri,
+            id = recent.id,
+            writable = canWrite,
+            saveState = when {
+                uri == null -> SaveState.UNSAVED
+                canWrite && recent.hasUnsavedChanges -> SaveState.SAVING
+                canWrite -> SaveState.SAVED
+                else -> SaveState.READ_ONLY
+            },
+            hasUnsavedChanges = recent.hasUnsavedChanges || uri == null
+        )
+    }
+
+    private fun scheduleRecentCache(document: MarkdownDocument, immediate: Boolean = false) {
+        recentCacheJobs.remove(document.id)?.cancel()
+        recentCacheJobs[document.id] = lifecycleScope.launch {
+            if (!immediate) delay(RECENT_CACHE_DEBOUNCE_MS)
+            withContext(Dispatchers.IO) {
+                recentDocumentsStore.saveContent(document.id, document.content)
+            }
+        }
     }
 
     private fun updateContent(id: String, content: String) {
@@ -260,9 +421,12 @@ class MainActivity : ComponentActivity() {
         val updated = current.copy(
             content = content,
             saveState = nextState,
-            revision = current.revision + 1L
+            revision = current.revision + 1L,
+            hasUnsavedChanges = true
         )
         replaceTab(updated)
+        rememberDocument(updated, touched = false)
+        scheduleRecentCache(updated)
 
         if (updated.uri != null && updated.writable) {
             scheduleAutoSave(updated)
@@ -279,9 +443,12 @@ class MainActivity : ComponentActivity() {
             val latest = tabs.firstOrNull { it.id == snapshot.id } ?: return@launch
 
             if (latest.content == snapshot.content) {
-                replaceTab(
-                    latest.copy(saveState = if (saved) SaveState.SAVED else SaveState.ERROR)
+                val settled = latest.copy(
+                    saveState = if (saved) SaveState.SAVED else SaveState.ERROR,
+                    hasUnsavedChanges = !saved
                 )
+                replaceTab(settled)
+                rememberDocument(settled, touched = false)
             }
         }
     }
@@ -316,6 +483,7 @@ class MainActivity : ComponentActivity() {
         if (index < 0) return
 
         val closing = tabs[index]
+        scheduleRecentCache(closing, immediate = true)
         saveJobs.remove(id)?.cancel()
         if (closing.writable && closing.uri != null && closing.saveState == SaveState.SAVING) {
             lifecycleScope.launch(Dispatchers.IO) { writeDocument(closing) }
@@ -331,7 +499,7 @@ class MainActivity : ComponentActivity() {
 
         tabs = remaining
         if (activeTabId == id) {
-            activeTabId = remaining[index.coerceAtMost(remaining.lastIndex)].id
+            activateTab(remaining[index.coerceAtMost(remaining.lastIndex)].id)
         }
     }
 
@@ -457,9 +625,16 @@ class MainActivity : ComponentActivity() {
         directionMode = runCatching {
             DirectionMode.valueOf(readerPreferences.getString(PREF_DIRECTION, null).orEmpty())
         }.getOrDefault(DirectionMode.AUTO)
+        customFontName = if (customFontFile.isFile) {
+            readerPreferences.getString(PREF_CUSTOM_FONT_NAME, "Custom font.ttf")
+        } else {
+            null
+        }
         readerFont = runCatching {
             ReaderFont.valueOf(readerPreferences.getString(PREF_READER_FONT, null).orEmpty())
-        }.getOrDefault(ReaderFont.SMART)
+        }.getOrDefault(ReaderFont.SMART).let { selected ->
+            if (selected == ReaderFont.CUSTOM && customFontName == null) ReaderFont.SMART else selected
+        }
     }
 
     private fun setReaderFontSize(value: Float) {
@@ -473,8 +648,87 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun applyReaderFont(value: ReaderFont) {
+        if (value == ReaderFont.CUSTOM && !customFontFile.isFile) return
         readerFont = value
         readerPreferences.edit { putString(PREF_READER_FONT, value.name) }
+    }
+
+    private fun launchCustomFontPicker() {
+        fontActionMessage = null
+        customFontPicker.launch(
+            arrayOf("font/ttf", "application/x-font-ttf", "application/octet-stream", "application/font-sfnt")
+        )
+    }
+
+    private fun importCustomFont(uri: Uri) {
+        fontActionMessage = "Importing font…"
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val name = displayName(uri) ?: "Custom font.ttf"
+                    require(name.endsWith(".ttf", ignoreCase = true)) {
+                        "Please choose a TrueType font file (.ttf)."
+                    }
+                    val directory = customFontFile.parentFile ?: error("Font storage is unavailable")
+                    directory.mkdirs()
+                    val temporary = File(directory, "marblemd-custom-font.tmp")
+                    val input = contentResolver.openInputStream(uri) ?: error("Unable to read the selected font")
+                    try {
+                        input.use { source ->
+                            temporary.outputStream().buffered().use { destination ->
+                                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                                var total = 0L
+                                while (true) {
+                                    val count = source.read(buffer)
+                                    if (count < 0) break
+                                    total += count
+                                    require(total <= MAX_CUSTOM_FONT_BYTES) {
+                                        "Font file is too large (maximum 25 MB)."
+                                    }
+                                    destination.write(buffer, 0, count)
+                                }
+                            }
+                        }
+                        Typeface.createFromFile(temporary)
+                        if (customFontFile.exists() && !customFontFile.delete()) {
+                            error("Unable to replace the current custom font")
+                        }
+                        if (!temporary.renameTo(customFontFile)) {
+                            temporary.copyTo(customFontFile, overwrite = true)
+                            temporary.delete()
+                        }
+                    } catch (error: Throwable) {
+                        temporary.delete()
+                        throw error
+                    }
+                    name
+                }
+            }
+            result.onSuccess { name ->
+                customFontVersion++
+                customFontName = name
+                fontActionMessage = "$name imported and applied."
+                readerFont = ReaderFont.CUSTOM
+                readerPreferences.edit {
+                    putString(PREF_CUSTOM_FONT_NAME, name)
+                    putString(PREF_READER_FONT, ReaderFont.CUSTOM.name)
+                }
+            }.onFailure { error ->
+                fontActionMessage = error.message ?: "Could not import this font."
+            }
+        }
+    }
+
+    private fun removeCustomFont() {
+        customFontFile.delete()
+        customFontVersion++
+        customFontName = null
+        fontActionMessage = "Custom font removed."
+        if (readerFont == ReaderFont.CUSTOM) {
+            readerFont = ReaderFont.SMART
+            readerPreferences.edit { putString(PREF_READER_FONT, ReaderFont.SMART.name) }
+        }
+        readerPreferences.edit { remove(PREF_CUSTOM_FONT_NAME) }
     }
 
     private fun displayName(uri: Uri): String? {
@@ -504,9 +758,12 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val AUTOSAVE_DEBOUNCE_MS = 550L
+        private const val RECENT_CACHE_DEBOUNCE_MS = 450L
+        private const val MAX_CUSTOM_FONT_BYTES = 25L * 1024L * 1024L
         private const val PREF_FONT_SIZE = "font_size"
         private const val PREF_DIRECTION = "direction"
         private const val PREF_READER_FONT = "reader_font"
+        private const val PREF_CUSTOM_FONT_NAME = "custom_font_name"
 
         private const val SAMPLE_MARKDOWN = """
 # MarbleMD

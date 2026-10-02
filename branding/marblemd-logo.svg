@@ -1,30 +1,32 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
   <title id="title">MarbleMD logo</title>
-  <desc id="desc">A folded Markdown document forming an M with opposing reading-direction chevrons.</desc>
+  <desc id="desc">A folded Markdown page with a crisp hash marker and geometric M in a deep marbled blue tile.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#06132F"/>
-      <stop offset="0.58" stop-color="#0A2D70"/>
-      <stop offset="1" stop-color="#30218C"/>
+      <stop offset="0" stop-color="#07132E"/>
+      <stop offset="0.58" stop-color="#0C2861"/>
+      <stop offset="1" stop-color="#36258C"/>
     </linearGradient>
-    <linearGradient id="m" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#00D5E8"/>
-      <stop offset="0.52" stop-color="#135DF5"/>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#00C6D8"/>
+      <stop offset="0.56" stop-color="#1857E8"/>
       <stop offset="1" stop-color="#7655FF"/>
     </linearGradient>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
-      <feDropShadow dx="0" dy="9" stdDeviation="10" flood-color="#020817" flood-opacity=".34"/>
+      <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#020817" flood-opacity=".3"/>
     </filter>
   </defs>
   <rect x="16" y="16" width="288" height="288" rx="72" fill="url(#bg)"/>
+  <path d="M16 49c57 32 100 34 158 10 46-19 75-22 130-5v46c-55-16-89-8-130 15-58 32-104 28-158-3z" fill="#00C6D8" opacity=".12"/>
+  <path d="M16 231c55-31 98-18 137 9 49 34 92 31 151 1v59H16z" fill="#1857E8" opacity=".36"/>
   <g filter="url(#shadow)">
-    <path d="M79 72c0-12 9-21 21-21h101l40 40v137c0 13-10 23-23 23H101c-12 0-22-10-22-22Z" fill="#F7FAFF"/>
-    <path d="M201 51v27c0 7 6 13 13 13h27Z" fill="#BDEEFF"/>
-    <path d="M97 113h38l29 35 30-35h35v88h-31v-45l-34 40-35-40v45H97Z" fill="url(#m)"/>
-    <path d="m109 215 18-16 9 9-9 8 9 9-9 9Zm110 0-18-16-9 9 9 8-9 9 9 9Z" fill="#06132F"/>
-    <path d="M145 212h39v9h-39z" fill="#00D5E8"/>
+    <path d="M78 76c0-11 9-20 20-20h94l47 47v132c0 12-9 21-21 21H99c-12 0-21-9-21-21z" fill="#F8FAFF"/>
+    <path d="M192 56v40c0 4 3 7 8 7h39z" fill="#B5D7FF"/>
+    <path d="M110 116h11v48h-11zm24 0h11v48h-11zm-5 16h47v11h-47zm0 19h47v11h-47z" fill="#00AFC8"/>
+    <path d="M177 114h16l15 20 15-20h16v54h-16v-31l-15 20-15-20v31h-16z" fill="url(#accent)"/>
+    <path d="M110 184h116v9H110zm0 24h95v9h-95z" fill="#A8B6D3"/>
   </g>
-  <text x="360" y="171" fill="#06132F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="112" font-weight="800" letter-spacing="-5">Marble<tspan fill="#135DF5">MD</tspan></text>
+  <text x="360" y="171" fill="#07132E" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="112" font-weight="800" letter-spacing="-5">Marble<tspan fill="#1857E8">MD</tspan></text>
   <text x="366" y="225" fill="#52627F" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="650" letter-spacing="7">MULTILINGUAL MARKDOWN</text>
 </svg>

@@ -39,7 +39,7 @@ internal object ScriptFontApplier {
         fonts: FontRegistry,
         readerFont: ReaderFont
     ) {
-        if (start >= end || script == FontScript.SYSTEM || overlapsCode(text, start, end)) return
+        if (start >= end || overlapsCode(text, start, end)) return
         val typeface = selectTypeface(script, fonts, readerFont) ?: return
         text.setSpan(
             PreservingTypefaceSpan(typeface),
@@ -66,6 +66,11 @@ internal object ScriptFontApplier {
         ReaderFont.LALEZAR -> when (script) {
             FontScript.ARABIC, FontScript.GOOGLE_SANS -> fonts.lalezar
             FontScript.SYSTEM -> null
+        }
+        ReaderFont.CUSTOM -> when (script) {
+            FontScript.ARABIC, FontScript.GOOGLE_SANS -> fonts.custom
+                ?: if (script == FontScript.ARABIC) fonts.vazirmatn else fonts.notoSans
+            FontScript.SYSTEM -> fonts.custom
         }
     }
 

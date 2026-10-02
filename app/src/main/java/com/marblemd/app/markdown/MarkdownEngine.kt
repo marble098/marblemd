@@ -43,9 +43,10 @@ internal class MarkdownEngine(
     linkColor: Int,
     quoteColor: Int,
     codeBackgroundColor: Int,
-    private val readerFont: ReaderFont
+    private val readerFont: ReaderFont,
+    customFontPath: String?
 ) {
-    private val fonts = FontRegistry(context)
+    private val fonts = FontRegistry(context, customFontPath)
     private val imageLoader = ImageLoader.Builder(context).build()
     private val parseLock = Any()
     private val reducer = MarkwonReducer.directChildren()
