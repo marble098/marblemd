@@ -9,11 +9,11 @@
         android:strokeColor="#FFFFFFFF"
         android:strokeWidth="4"
         android:strokeLineJoin="round"
-        android:pathData="M25,22C25,18 28,15 32,15H71L83,27V79C83,83 80,86 75,86H32C28,86 25,83 25,79zM71,15V23C71,25 73,27 75,27H83" />
+        android:pathData="M24,24C24,21 27,18 31,18H66L84,36V80C84,85 81,88 76,88H32C28,88 24,85 24,81zM66,18V31C66,34 68,36 71,36H84" />
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M31,38H42L54,52L66,38H77V73H67V53L54,68L41,53V73H31z" />
+        android:pathData="M36,40h4v18h-4zM45,40h4v18h-4zM34,46h17v4H34zM34,53h17v4H34zM54,39H60L66,47L72,39H78V60H72V48L66,56L60,48V60H54z" />
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M36,77L42,72L45,75L42,78L45,81L42,84zM72,77L66,72L63,75L66,78L63,81L66,84zM47,77h14v3H47z" />
+        android:pathData="M35,68H74V71H35zM35,76H67V79H35z" />
 </vector>

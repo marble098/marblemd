@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -50,6 +51,15 @@ internal fun MarkdownEditor(
     var value by remember { mutableStateOf(TextFieldValue(markdown)) }
     var insertSheet by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
+    val caretOffset = value.selection.end.coerceIn(0, value.text.length)
+    val lineStart = if (caretOffset == 0) {
+        0
+    } else {
+        value.text.lastIndexOf('\n', caretOffset - 1).let { if (it < 0) 0 else it + 1 }
+    }
+    val lineNumber = value.text.take(caretOffset).count { it == '\n' } + 1
+    val columnNumber = caretOffset - lineStart + 1
+    val wordCount = remember(value.text) { Regex("\\S+").findAll(value.text).count() }
 
     LaunchedEffect(markdown) {
         if (markdown != value.text) {
@@ -129,6 +139,26 @@ internal fun MarkdownEditor(
                         lineHeight = 24.sp
                     ),
                     cursorBrush = SolidColor(colors.primary)
+                )
+            }
+
+            HorizontalDivider()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 7.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                Text(
+                    "Ln $lineNumber, Col $columnNumber",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onSurfaceVariant
+                )
+                androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+                Text(
+                    "$wordCount words • ${value.text.length} chars",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onSurfaceVariant
                 )
             }
         }

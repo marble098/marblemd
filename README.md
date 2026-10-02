@@ -1,47 +1,71 @@
-# MarbleMD
+# MarbleMD 📄✨
 
-MarbleMD is a native Android Markdown reader focused on correct multilingual typography and bidirectional text.
+**یک Markdown Reader و ویرایشگر مدرن برای اندروید؛ ساخته‌شده برای فارسی، متن‌های راست‌به‌چپ و نوشتار چندزبانه.**
 
-## ویژگی‌ها
+MarbleMD فایل‌های Markdown را با حفظ چیدمان درست فارسی و انگلیسی می‌خواند، ویرایش می‌کند و برای ادامه‌دادن در اختیار شما نگه می‌دارد. رابط کاربری با **Jetpack Compose و Material 3** ساخته شده و فایل‌ها از طریق Android Storage Access Framework باز و ذخیره می‌شوند.
 
-- خواندن فایل‌های `.md` / Markdown با Android Storage Access Framework؛ بدون نیاز به مجوز Storage قدیمی.
-- سه حالت جهت متن: **Auto / RTL / LTR**.
-- در حالت Auto از `FIRST_STRONG` + `TEXT_ALIGNMENT_TEXT_START` استفاده می‌شود تا هر پاراگراف بر اساس جهت واقعی خودش چیده شود.
-- اعمال **Vazirmatn** روی اسکریپت Arabic (فارسی، عربی، اردو، کردی و...) و **Noto Sans** (Google) روی Latin/Greek/Cyrillic؛ سایر اسکریپت‌ها از fallback چندزبانه خود Android استفاده می‌کنند.
-- نمایش درست متن‌های ترکیبی فارسی/انگلیسی بر پایه الگوریتم Unicode Bidirectional خود Android.
-- تغییر اندازه متن بین 12sp و 34sp.
-- CommonMark + GFM tables + task lists + strikethrough + HTML + links + remote images + code blocks + quotes + lists.
-- انتخاب و کپی متن، لینک‌های قابل کلیک، high-quality line breaking.
-- Material 3 + Jetpack Compose؛ AndroidView فقط برای TextView/Markwon استفاده شده تا Bidi و Markdown spanهای Android با حداکثر کیفیت حفظ شوند.
-- Dark/Light خودکار بر اساس سیستم.
-- GitHub Actions: test + lint + signed release APK + SHA256.
-- `compileSdk/targetSdk 37`, AGP 9.3.0, Gradle 9.5.0, Kotlin/Compose Compiler 2.4.10, Compose BOM 2026.08.00.
+## ⭐ قابلیت‌ها
 
-## فونت‌ها
+### 📚 مطالعه و مدیریت فایل‌ها
 
-فایل‌های فونت عمداً داخل سورس commit نمی‌شوند. هنگام build، task `fetchFonts` نسخه‌های OFL زیر را مستقیماً دریافت و داخل assets قرار می‌دهد:
+- بازکردن یک یا چند فایل `.md` و `.markdown` از حافظه یا فضای ابری؛ بدون درخواست مجوز قدیمی Storage.
+- فهرست **Recent Markdown** با ۲۰ فایل و پیش‌نویس اخیر؛ آخرین سند هنگام اجرای دوباره برنامه باز می‌شود.
+- ذخیرهٔ موقعیت مطالعه برای هر سند؛ با بازکردن دوباره، از همان بلوک و همان فاصلهٔ پیمایش ادامه می‌دهید.
+- ذخیرهٔ خصوصی پیش‌نویس‌ها و نسخهٔ پشتیبان محلی فایل‌های اخیر برای بازیابی پس از بسته‌شدن برنامه یا قطع دسترسی موقت به فایل.
+- پشتیبانی از چند سند باز، تب‌ها، بازکردن فایل از برنامه‌های دیگر و اشتراک‌گذاری متن.
+- ذخیرهٔ خودکار فایل‌های قابل‌نوشتن؛ برای فایل‌های فقط‌خواندنی یا پیش‌نویس‌ها، **Save as** در دسترس است.
 
-- Vazirmatn variable TTF
-- Google Noto Sans variable TTF
+### ✍️ ساخت و ویرایش Markdown
 
-اگر شبکه در زمان build قطع باشد، می‌توانید این دو فایل را دستی در `app/src/main/assets/fonts/` با نام‌های `Vazirmatn.ttf` و `NotoSans.ttf` قرار دهید.
+- ایجاد فوری فایل Markdown جدید و شروع مستقیم در ویرایشگر.
+- نوار ابزار ویرایش برای Heading، Bold، Italic، لینک، فهرست، چک‌لیست، نقل‌قول، کد، تصویر، جدول و سایر ساختارهای رایج Markdown.
+- پیش‌نمایش Markdown با جابه‌جایی سریع بین حالت ویرایش و مطالعه؛ نمایش شمارهٔ خط، ستون، تعداد واژه و نویسه در نوار وضعیت ویرایشگر.
+- Smart outline برای رفتن سریع به تیترهای سند.
 
-## Build
+### 🔤 فارسی، جهت متن و فونت
+
+- سه حالت جهت متن: **Auto / RTL / LTR**؛ حالت خودکار جهت هر پاراگراف را جداگانه تشخیص می‌دهد.
+- نمایش درست ترکیب فارسی و انگلیسی با الگوریتم Unicode Bidirectional اندروید.
+- فونت چندزبانهٔ هوشمند با **Vazirmatn** برای خط عربی و **Noto Sans** برای Latin/Greek/Cyrillic؛ به‌همراه انتخاب‌های Vazirmatn و Lalezar.
+- افزودن فونت **TTF دلخواه** از دستگاه، پیش‌نمایش آن روی متن و انتخاب یا حذف فونت سفارشی. فایل فونت در فضای خصوصی برنامه نگه‌داری می‌شود.
+- تنظیم اندازهٔ متن از ۱۲ تا ۳۴ `sp`؛ سازگار با تراکم نمایشگر و مقیاس فونت سیستم.
+
+### 🧩 نمایش Markdown
+
+پشتیبانی از CommonMark، جدول‌های GFM، task list، strikethrough، HTML، لینک‌ها، تصویرهای اینترنتی، بلوک کد، نقل‌قول و فهرست‌ها. انتخاب و کپی متن، لینک‌های قابل‌کلیک و line breaking باکیفیت هم فعال است.
+
+### 🎨 رابط و آیکون
+
+- تم روشن و تاریک هماهنگ با تنظیم سیستم.
+- آیکون تازهٔ MarbleMD با **Adaptive Icon**، لایه‌های برداری مقیاس‌پذیر و آیکون monochrome برای آیکون‌های تم‌دار اندروید ۱۳ به بعد.
+- فایل‌های آیکون و راهنمای برند در پوشهٔ [`branding/`](branding/README.md).
+
+## 🛠️ ساخت پروژه
+
+پیش‌نیازها: **JDK 17** و Android SDK شامل Android 37 / Build Tools 37. مخزن Gradle Wrapper نسخهٔ 9.5.0 را در صورت نیاز دریافت می‌کند.
 
 ```bash
-gradle --no-daemon testDebugUnitTest lintDebug assembleRelease
+./gradlew --no-daemon testDebugUnitTest lintDebug assembleRelease
 ```
 
-GitHub Actions همین فرایند را خودکار انجام می‌دهد و APKها را به‌عنوان Artifact منتشر می‌کند.
+فونت‌های پیش‌فرض با task `fetchFonts` از مخزن‌های بالادستی و تحت مجوز OFL دریافت می‌شوند. اگر دریافت خودکار در زمان build ممکن نبود، نسخه‌های OFL فونت‌ها را با نام‌های زیر در `app/src/main/assets/fonts/` بگذارید:
 
-## معماری‌ها
+- `Vazirmatn.ttf`
+- `NotoSans.ttf`
+- `Lalezar.ttf`
 
-MarbleMD هیچ native `.so` ندارد، بنابراین APK universal روی `arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86` و معماری‌های سازگار بدون تفاوت کد ماشین اجرا می‌شود. Workflow علاوه بر universal، خروجی‌های ABI-labelled را هم در Artifact قرار می‌دهد تا توزیع برای هر معماری ساده باشد.
+## 📦 خروجی و معماری‌ها
 
-## انتشار بدون clone
+برنامه کتابخانهٔ native اختصاصی (`.so`) ندارد؛ بنابراین APK universal روی `arm64-v8a`، `armeabi-v7a`، `x86_64`، `x86` و دستگاه‌های سازگار اجرا می‌شود. Workflow گیت‌هاب آزمون واحد، Android Lint، ساخت APKهای release و محاسبهٔ SHA-256 را انجام می‌دهد.
 
-فایل `publish-marblemd.sh` که همراه ZIP ارائه شده، PAT را به‌صورت مخفی می‌گیرد، ریپو `marblemd` را در حساب GitHub احراز هویت‌شده می‌سازد و کل tree سورس را با Git Data API در یک commit روی `main` قرار می‌دهد؛ هیچ `git clone` انجام نمی‌شود.
+## 🧱 فناوری‌ها
 
-## License
+- Kotlin، Android SDK و Jetpack Compose / Material 3
+- Markwon + CommonMark برای رندر Markdown
+- Android Storage Access Framework برای بازکردن و ذخیرهٔ امن فایل‌ها
+- Android TextView فقط برای حفظ دقیق spanها و رفتار Bidi متن Markdown
+- GitHub Actions برای تست، lint و خروجی‌های release
 
-MIT. Font files are fetched from their upstream OFL-licensed projects during build and are not vendored in this source archive.
+## 📜 مجوز
+
+کد پروژه تحت مجوز **MIT** است. فونت‌های پیش‌فرض هنگام ساخت از منابع بالادستی با مجوز OFL دریافت می‌شوند و داخل این مخزن نگه‌داری نمی‌شوند.

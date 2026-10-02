@@ -1,12 +1,16 @@
 # MarbleMD brand assets
 
-The MarbleMD symbol combines four product ideas in one compact mark:
+The refreshed MarbleMD mark keeps the product unmistakable at launcher size:
 
-- a folded document for file reading;
-- a geometric **M** for MarbleMD and Markdown;
-- opposing chevrons for RTL/LTR text;
-- a cyan bridge for multilingual flow.
+- 📄 a folded Markdown page;
+- `#` for Markdown headings and a geometric **M** for MarbleMD;
+- 🌊 a restrained midnight-blue marbled backdrop with cyan, indigo and violet accents.
 
-`marblemd-app-icon.png` is the 512×512 presentation/Store asset. `marblemd-logo.svg` is the scalable horizontal logo. Android launcher resources are maintained separately under `app/src/main/res/` so adaptive masks and themed monochrome icons work correctly.
+## Assets
 
-Palette: Midnight `#06132F`, Indigo `#135DF5`, Cyan `#00D5E8`, Violet `#7655FF`, Paper `#F7FAFF`.
+- `marblemd-app-icon.png` — 512 × 512 store/presentation icon.
+- `marblemd-app-icon.svg` — scalable square icon source.
+- `marblemd-logo.svg` — scalable horizontal logo.
+- Android adaptive foreground, background and monochrome vectors live in `app/src/main/res/`. Adaptive vectors scale to the launcher mask and support themed icons on Android 13+; vector fallback resources are provided for older devices.
+
+Palette: Midnight `#07132E`, Indigo `#1857E8`, Cyan `#00C6D8`, Violet `#7655FF`, Paper `#F8FAFF`.

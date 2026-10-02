@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 108 108" role="img" aria-labelledby="title">
+  <title id="title">MarbleMD app icon</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07132E"/>
+      <stop offset=".58" stop-color="#0C2861"/>
+      <stop offset="1" stop-color="#36258C"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#00C6D8"/>
+      <stop offset=".56" stop-color="#1857E8"/>
+      <stop offset="1" stop-color="#7655FF"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="1.8" flood-color="#000000" flood-opacity=".22"/>
+    </filter>
+  </defs>
+  <rect width="108" height="108" fill="url(#bg)"/>
+  <path d="M0 0h108v41c-17-6-27-5-43 4C43 57 23 54 0 41z" fill="#0C2861"/>
+  <path d="M0 79c22-12 39-7 55 4 19 13 37 8 53-5v30H0z" fill="#123D82" opacity=".9"/>
+  <path d="M80 0h28v33C96 25 87 15 80 0z" fill="#36258C" opacity=".62"/>
+  <path d="M0 57c20-12 37-11 54 0 18 11 36 9 54-4v8c-20 14-38 16-57 4C33 54 18 55 0 68z" fill="#00C6D8" opacity=".16"/>
+  <g filter="url(#shadow)">
+    <path d="M27 25c0-4 3-7 7-7h34l14 14v50c0 5-3 8-8 8H34c-4 0-7-3-7-7z" fill="#000000" opacity=".22"/>
+    <path d="M24 24c0-3 3-6 7-6h35l18 18v44c0 5-3 8-8 8H32c-4 0-8-3-8-7z" fill="#F8FAFF"/>
+    <path d="M66 18v13c0 3 2 5 5 5h13z" fill="#D4E9FF"/>
+    <path d="M66 18l18 18H72c-4 0-6-2-6-6z" fill="#B5D7FF"/>
+    <path d="M36 40h4v18h-4zm9 0h4v18h-4zm-11 6h17v4H34zm0 7h17v4H34z" fill="#00AFC8"/>
+    <path d="M54 39h6l6 8 6-8h6v21h-6V48l-6 8-6-8v12h-6z" fill="url(#accent)"/>
+    <path d="M35 68h39v3H35zm0 8h32v3H35z" fill="#A8B6D3"/>
+  </g>
+</svg>
