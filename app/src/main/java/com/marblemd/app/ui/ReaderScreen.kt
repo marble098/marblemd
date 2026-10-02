@@ -1,34 +1,43 @@
 package com.marblemd.app.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FormatListBulleted
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SystemUpdateAlt
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -36,16 +45,20 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -57,58 +70,87 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.marblemd.app.R
+import com.marblemd.app.library.MarkdownTemplate
+import com.marblemd.app.library.RecentDocument
 import com.marblemd.app.markdown.MarkdownPlanHeading
 import com.marblemd.app.markdown.MarkdownRenderPlan
 import com.marblemd.app.model.DirectionMode
 import com.marblemd.app.model.MarkdownDocument
 import com.marblemd.app.model.ReaderFont
 import com.marblemd.app.model.SaveState
+import com.marblemd.app.model.ScrollTarget
+import com.marblemd.app.text.CustomFont
 import com.marblemd.app.update.UpdateStatus
 import com.marblemd.app.update.UpdateUiState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.Locale
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderScreen(
     documents: List<MarkdownDocument>,
-    activeDocument: MarkdownDocument,
+    activeDocument: MarkdownDocument?,
+    editing: Boolean,
     fontSizeSp: Float,
     directionMode: DirectionMode,
     readerFont: ReaderFont,
+    customFonts: List<CustomFont>,
+    uiFontId: String?,
+    recents: List<RecentDocument>,
+    editorFontFamily: FontFamily?,
+    scrollTarget: ScrollTarget?,
+    updateState: UpdateUiState,
+    onScrollTargetHandled: () -> Unit,
+    onScrollPositionChange: (String, Int) -> Unit,
     onOpen: () -> Unit,
+    onNewFile: (MarkdownTemplate) -> Unit,
+    onOpenRecent: (RecentDocument) -> Unit,
+    onRemoveRecent: (RecentDocument) -> Unit,
+    onClearRecents: () -> Unit,
     onSelectTab: (String) -> Unit,
     onCloseTab: (String) -> Unit,
     onContentChange: (String) -> Unit,
+    onSaveNow: () -> Unit,
     onRequestSaveAs: () -> Unit,
+    onEditingChange: (Boolean) -> Unit,
     onFontSizeChange: (Float) -> Unit,
     onDirectionChange: (DirectionMode) -> Unit,
     onReaderFontChange: (ReaderFont) -> Unit,
-    updateState: UpdateUiState,
+    onImportFont: () -> Unit,
+    onDeleteFont: (CustomFont) -> Unit,
+    onUseFontInUi: (CustomFont?) -> Unit,
     onCheckForUpdates: () -> Unit,
     onDownloadUpdate: () -> Unit,
     onInstallUpdate: () -> Unit
 ) {
-    var tabsSheet by remember { mutableStateOf(false) }
+    var librarySheet by remember { mutableStateOf(false) }
+    var templateSheet by remember { mutableStateOf(false) }
     var outlineSheet by remember { mutableStateOf(false) }
     var readingSettingsSheet by remember { mutableStateOf(false) }
-    var editMode by remember(activeDocument.id) { mutableStateOf(false) }
     var updateSheet by remember { mutableStateOf(false) }
     var moreMenu by remember { mutableStateOf(false) }
-    val renderPlans = remember { mutableStateMapOf<String, MarkdownRenderPlan>() }
+    var fontPendingDelete by remember { mutableStateOf<CustomFont?>(null) }
 
+    val renderPlans = remember { mutableStateMapOf<String, MarkdownRenderPlan>() }
     val readerListStates = remember { mutableMapOf<String, LazyListState>() }
     val editorScrollStates = remember { mutableMapOf<String, ScrollState>() }
-    val readerListState = readerListStates.getOrPut(activeDocument.id) { LazyListState() }
-    val editorScroll = editorScrollStates.getOrPut(activeDocument.id) { ScrollState(0) }
+    val activeId = activeDocument?.id
+    val readerListState = activeId?.let { readerListStates.getOrPut(it) { LazyListState() } }
+    val editorScroll = activeId?.let { editorScrollStates.getOrPut(it) { ScrollState(0) } }
     val scope = rememberCoroutineScope()
+    val fallbackListState = remember { LazyListState() }
+    val fallbackScrollState = remember { ScrollState(0) }
     val markdownEngine = rememberMarkdownEngine(readerFont)
     val documentIds = documents.map { it.id }
 
@@ -119,34 +161,76 @@ fun ReaderScreen(
         editorScrollStates.keys.retainAll(keep)
     }
 
-    LaunchedEffect(activeDocument.id, activeDocument.revision, editMode, markdownEngine) {
-        val cached = renderPlans[activeDocument.id]
-        if (!editMode && cached?.revision != activeDocument.revision) {
-            renderPlans.remove(activeDocument.id)
-            val contentSnapshot = activeDocument.content
-            val revisionSnapshot = activeDocument.revision
-            renderPlans[activeDocument.id] = withContext(Dispatchers.Default) {
+    LaunchedEffect(activeId, activeDocument?.revision, editing, markdownEngine) {
+        val document = activeDocument ?: return@LaunchedEffect
+        val cached = renderPlans[document.id]
+        if (!editing && cached?.revision != document.revision) {
+            renderPlans.remove(document.id)
+            val contentSnapshot = document.content
+            val revisionSnapshot = document.revision
+            renderPlans[document.id] = withContext(Dispatchers.Default) {
                 markdownEngine.prepare(contentSnapshot, revisionSnapshot)
             }
         }
     }
 
-    val activePlan = renderPlans[activeDocument.id]
-        ?.takeIf { it.revision == activeDocument.revision }
+    // Remember the reading position of the active document.
+    LaunchedEffect(activeId, readerListState) {
+        val id = activeId ?: return@LaunchedEffect
+        val state = readerListState ?: return@LaunchedEffect
+        snapshotFlow { state.firstVisibleItemIndex }
+            .distinctUntilChanged()
+            .collect { index -> onScrollPositionChange(id, index) }
+    }
 
-    if (tabsSheet) {
-        TabsSheet(
+    val activePlan = activeDocument?.let { document ->
+        renderPlans[document.id]?.takeIf { it.revision == document.revision }
+    }
+
+    // Restore a saved position once the document blocks are ready.
+    LaunchedEffect(scrollTarget, activePlan, activeId) {
+        val target = scrollTarget ?: return@LaunchedEffect
+        if (target.documentId != activeId) return@LaunchedEffect
+        val plan = activePlan ?: return@LaunchedEffect
+        val state = readerListStates.getOrPut(target.documentId) { LazyListState() }
+        state.scrollToItem(target.blockIndex.coerceIn(0, plan.blocks.lastIndex.coerceAtLeast(0)))
+        onScrollTargetHandled()
+    }
+
+    if (librarySheet) {
+        LibrarySheet(
             documents = documents,
-            activeId = activeDocument.id,
-            onDismiss = { tabsSheet = false },
-            onSelect = {
-                tabsSheet = false
+            activeId = activeId,
+            recents = recents,
+            onDismiss = { librarySheet = false },
+            onSelectDocument = {
+                librarySheet = false
                 onSelectTab(it)
             },
-            onClose = onCloseTab,
-            onOpen = {
-                tabsSheet = false
+            onCloseDocument = onCloseTab,
+            onOpenFiles = {
+                librarySheet = false
                 onOpen()
+            },
+            onNewFile = {
+                librarySheet = false
+                templateSheet = true
+            },
+            onOpenRecent = {
+                librarySheet = false
+                onOpenRecent(it)
+            },
+            onRemoveRecent = onRemoveRecent,
+            onClearRecents = onClearRecents
+        )
+    }
+
+    if (templateSheet) {
+        TemplateSheet(
+            onDismiss = { templateSheet = false },
+            onSelect = { template ->
+                templateSheet = false
+                onNewFile(template)
             }
         )
     }
@@ -157,7 +241,7 @@ fun ReaderScreen(
             onDismiss = { outlineSheet = false },
             onSelect = { heading ->
                 outlineSheet = false
-                scope.launch { readerListState.animateScrollToItem(heading.blockIndex) }
+                scope.launch { readerListState?.animateScrollToItem(heading.blockIndex) }
             }
         )
     }
@@ -167,10 +251,34 @@ fun ReaderScreen(
             fontSizeSp = fontSizeSp,
             readerFont = readerFont,
             directionMode = directionMode,
+            customFonts = customFonts,
+            uiFontId = uiFontId,
             onDismiss = { readingSettingsSheet = false },
             onFontSizeChange = onFontSizeChange,
             onReaderFontChange = onReaderFontChange,
-            onDirectionChange = onDirectionChange
+            onDirectionChange = onDirectionChange,
+            onImportFont = onImportFont,
+            onDeleteFont = { font -> fontPendingDelete = font },
+            onUseFontInUi = onUseFontInUi
+        )
+    }
+
+    fontPendingDelete?.let { font ->
+        AlertDialog(
+            onDismissRequest = { fontPendingDelete = null },
+            title = { Text("Delete ${font.displayName}?") },
+            text = { Text("The imported font file will be removed from the app.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        fontPendingDelete = null
+                        onDeleteFont(font)
+                    }
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { fontPendingDelete = null }) { Text("Cancel") }
+            }
         )
     }
 
@@ -190,37 +298,38 @@ fun ReaderScreen(
                 title = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = activeDocument.title,
+                            text = activeDocument?.title ?: "MarbleMD",
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = if (editMode) {
-                                "Editing • ${activeDocument.saveState.compactLabel()}"
-                            } else {
-                                activeDocument.saveState.compactLabel()
-                            },
+                            text = activeDocument?.saveState?.compactLabel() ?: "Markdown reader • editor",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onOpen) {
-                        Icon(Icons.Outlined.FolderOpen, contentDescription = "Open Markdown files")
+                    IconButton(onClick = { librarySheet = true }) {
+                        BadgedBox(
+                            badge = {
+                                if (documents.size > 1) {
+                                    Badge { Text(documents.size.toString()) }
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Outlined.Description, contentDescription = "Library")
+                        }
                     }
                 },
                 actions = {
-                    BadgedBox(
-                        badge = {
-                            if (documents.size > 1) {
-                                Badge { Text(documents.size.toString()) }
-                            }
-                        }
-                    ) {
-                        IconButton(onClick = { tabsSheet = true }) {
-                            Icon(Icons.Outlined.Description, contentDescription = "Open tabs")
+                    if (activeDocument != null) {
+                        IconButton(onClick = { onEditingChange(!editing) }) {
+                            Icon(
+                                if (editing) Icons.Outlined.Visibility else Icons.Outlined.Edit,
+                                contentDescription = if (editing) "Preview" else "Edit"
+                            )
                         }
                     }
 
@@ -244,52 +353,59 @@ fun ReaderScreen(
                             onDismissRequest = { moreMenu = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text(if (editMode) "Preview document" else "Edit Markdown") },
-                                leadingIcon = {
-                                    Icon(
-                                        if (editMode) Icons.Outlined.Visibility else Icons.Outlined.Edit,
-                                        contentDescription = null
-                                    )
-                                },
+                                text = { Text("Library & recents") },
+                                leadingIcon = { Icon(Icons.Outlined.History, contentDescription = null) },
                                 onClick = {
                                     moreMenu = false
-                                    editMode = !editMode
+                                    librarySheet = true
                                 }
                             )
 
                             DropdownMenuItem(
-                                text = { Text("Smart outline") },
-                                leadingIcon = {
-                                    Icon(Icons.Outlined.FormatListBulleted, contentDescription = null)
-                                },
-                                enabled = activePlan?.headings?.isNotEmpty() == true && !editMode,
+                                text = { Text("New Markdown file") },
+                                leadingIcon = { Icon(Icons.Outlined.Add, contentDescription = null) },
                                 onClick = {
                                     moreMenu = false
-                                    outlineSheet = true
+                                    templateSheet = true
                                 }
                             )
+
+                            DropdownMenuItem(
+                                text = { Text("Open from device") },
+                                leadingIcon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
+                                onClick = {
+                                    moreMenu = false
+                                    onOpen()
+                                }
+                            )
+
+                            if (activePlan != null && !editing) {
+                                DropdownMenuItem(
+                                    text = { Text("Smart outline") },
+                                    leadingIcon = {
+                                        Icon(Icons.Outlined.FormatListBulleted, contentDescription = null)
+                                    },
+                                    enabled = activePlan.headings.isNotEmpty(),
+                                    onClick = {
+                                        moreMenu = false
+                                        outlineSheet = true
+                                    }
+                                )
+                            }
 
                             DropdownMenuItem(
                                 text = { Text("Reading settings") },
-                                leadingIcon = {
-                                    Icon(Icons.Outlined.TextFields, contentDescription = null)
-                                },
+                                leadingIcon = { Icon(Icons.Outlined.TextFields, contentDescription = null) },
                                 onClick = {
                                     moreMenu = false
                                     readingSettingsSheet = true
                                 }
                             )
 
-                            if (
-                                activeDocument.uri == null ||
-                                !activeDocument.writable ||
-                                activeDocument.saveState == SaveState.ERROR
-                            ) {
+                            if (activeDocument != null && activeDocument.uri == null) {
                                 DropdownMenuItem(
-                                    text = { Text("Save as") },
-                                    leadingIcon = {
-                                        Icon(Icons.Outlined.Save, contentDescription = null)
-                                    },
+                                    text = { Text("Save to a file") },
+                                    leadingIcon = { Icon(Icons.Outlined.Save, contentDescription = null) },
                                     onClick = {
                                         moreMenu = false
                                         onRequestSaveAs()
@@ -311,9 +427,7 @@ fun ReaderScreen(
                                         }
                                     )
                                 },
-                                leadingIcon = {
-                                    Icon(Icons.Outlined.SystemUpdateAlt, contentDescription = null)
-                                },
+                                leadingIcon = { Icon(Icons.Outlined.SystemUpdateAlt, contentDescription = null) },
                                 onClick = {
                                     moreMenu = false
                                     updateSheet = true
@@ -330,25 +444,38 @@ fun ReaderScreen(
                 .fillMaxSize()
                 .padding(inner)
         ) {
-            if (editMode) {
-                MarkdownEditor(
+            when {
+                activeDocument == null -> WelcomeContent(
+                    recents = recents,
+                    onOpen = onOpen,
+                    onNewFile = { templateSheet = true },
+                    onOpenRecent = onOpenRecent
+                )
+
+                editing -> MarkdownEditor(
                     markdown = activeDocument.content,
                     onMarkdownChange = onContentChange,
-                    scrollState = editorScroll,
+                    scrollState = editorScroll ?: fallbackScrollState,
+                    saveStateLabel = activeDocument.saveState.compactLabel(),
+                    canSaveAs = activeDocument.uri == null || !activeDocument.writable,
+                    onSave = onSaveNow,
+                    onRequestSaveAs = onRequestSaveAs,
+                    onExitToPreview = { onEditingChange(false) },
+                    fontFamily = editorFontFamily,
                     modifier = Modifier.fillMaxSize()
                 )
-            } else if (activePlan == null) {
-                PreparingDocument(
+
+                activePlan == null -> PreparingDocument(
                     title = activeDocument.title,
                     characterCount = activeDocument.content.length,
                     modifier = Modifier.fillMaxSize()
                 )
-            } else {
-                LazyMarkdownDocument(
+
+                else -> LazyMarkdownDocument(
                     plan = activePlan,
                     fontSizeSp = fontSizeSp,
                     directionMode = directionMode,
-                    listState = readerListState,
+                    listState = readerListState ?: fallbackListState,
                     engine = markdownEngine,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -357,18 +484,141 @@ fun ReaderScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WelcomeContent(
+    recents: List<RecentDocument>,
+    onOpen: () -> Unit,
+    onNewFile: () -> Unit,
+    onOpenRecent: (RecentDocument) -> Unit
+) {
+    val latest = recents.firstOrNull()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp, vertical = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Image(
+            painter = painterResource(R.drawable.ic_marblemd_mark),
+            contentDescription = null,
+            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(
+                MaterialTheme.colorScheme.primary
+            ),
+            modifier = Modifier
+                .height(56.dp)
+                .width(56.dp)
+        )
+        Text("MarbleMD", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            text = "A multilingual Markdown reader and editor that keeps RTL and LTR text on the right side of the page.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            FilledTonalButton(onClick = onOpen) {
+                Icon(Icons.Outlined.FolderOpen, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Open .md")
+            }
+            FilledTonalButton(onClick = onNewFile) {
+                Icon(Icons.Outlined.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("New file")
+            }
+        }
+
+        if (latest != null) {
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Continue reading",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = latest.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = buildString {
+                            append(formatWhen(latest.lastOpenedAt))
+                            append(" • ")
+                            append(latest.charCount.formatCount())
+                            if (latest.scrollIndex > 0) append(" • resumes where you stopped")
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (latest.snippet.isNotBlank()) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = latest.snippet,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    FilledTonalButton(onClick = { onOpenRecent(latest) }) {
+                        Text("Continue")
+                    }
+                }
+            }
+        }
+
+        if (recents.size > 1) {
+            Text("Recent Markdown", style = MaterialTheme.typography.titleSmall)
+            recents.drop(1).take(6).forEach { recent ->
+                ListItem(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenRecent(recent) }
+                        .padding(horizontal = 0.dp),
+                    leadingContent = { Icon(Icons.Outlined.History, contentDescription = null) },
+                    headlineContent = {
+                        Text(recent.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    },
+                    supportingContent = {
+                        Text(
+                            text = "${formatWhen(recent.lastOpenedAt)} • ${recent.charCount.formatCount()}",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ReadingSettingsSheet(
     fontSizeSp: Float,
     readerFont: ReaderFont,
     directionMode: DirectionMode,
+    customFonts: List<CustomFont>,
+    uiFontId: String?,
     onDismiss: () -> Unit,
     onFontSizeChange: (Float) -> Unit,
     onReaderFontChange: (ReaderFont) -> Unit,
-    onDirectionChange: (DirectionMode) -> Unit
+    onDirectionChange: (DirectionMode) -> Unit,
+    onImportFont: () -> Unit,
+    onDeleteFont: (CustomFont) -> Unit,
+    onUseFontInUi: (CustomFont?) -> Unit
 ) {
     var pendingSize by remember(fontSizeSp) { mutableFloatStateOf(fontSizeSp) }
+    val fonts = ReaderFont.all(customFonts)
+    val activeCustomId = ReaderFont.customFontId(readerFont.key)
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -386,7 +636,7 @@ private fun ReadingSettingsSheet(
                 Column {
                     Text("Reading settings", style = MaterialTheme.typography.titleLarge)
                     Text(
-                        "Kept off the reading canvas until you need it.",
+                        "Typography, direction and your own fonts.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -397,9 +647,7 @@ private fun ReadingSettingsSheet(
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
-                ) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                     Text(
                         "Text size  ${pendingSize.roundToInt()} sp",
                         style = MaterialTheme.typography.titleSmall
@@ -421,21 +669,78 @@ private fun ReadingSettingsSheet(
                 }
             }
 
-            Text("Font", style = MaterialTheme.typography.labelLarge)
-            Row(
+            Text("Reading font", style = MaterialTheme.typography.labelLarge)
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                ReaderFont.entries.forEach { font ->
-                    AssistChip(
-                        onClick = { onReaderFontChange(font) },
-                        label = {
+                fonts.forEach { font ->
+                    val selected = font.key == readerFont.key
+                    if (font.isCustom) {
+                        val custom = customFonts.firstOrNull {
+                            ReaderFont.CUSTOM_PREFIX + it.id == font.key
+                        }
+                        InputChip(
+                            selected = selected,
+                            onClick = { onReaderFontChange(font) },
+                            label = { Text(if (selected) "✓ ${font.shortLabel}" else font.shortLabel) },
+                            trailingIcon = {
+                                if (custom != null) {
+                                    Icon(
+                                        Icons.Outlined.Close,
+                                        contentDescription = "Delete ${custom.displayName}",
+                                        modifier = Modifier
+                                            .width(18.dp)
+                                            .height(18.dp)
+                                            .clickable { onDeleteFont(custom) }
+                                    )
+                                }
+                            }
+                        )
+                    } else {
+                        AssistChip(
+                            onClick = { onReaderFontChange(font) },
+                            label = { Text(if (selected) "✓ ${font.shortLabel}" else font.shortLabel) }
+                        )
+                    }
+                }
+            }
+
+            OutlinedButton(onClick = onImportFont, modifier = Modifier.fillMaxWidth()) {
+                Text("＋  Import .ttf / .otf font")
+            }
+            Text(
+                text = if (customFonts.isEmpty()) {
+                    "Add any TrueType font you like — it is copied into the app and used for reading, editing and (optionally) the whole interface."
+                } else {
+                    "${customFonts.size} custom font(s) installed. Tap ✕ on a chip to remove one."
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (activeCustomId != null) {
+                val custom = customFonts.firstOrNull { it.id == activeCustomId }
+                if (custom != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Use for the app interface", style = MaterialTheme.typography.bodyMedium)
                             Text(
-                                if (font == readerFont) "✓ ${font.shortLabel}"
-                                else font.shortLabel
+                                "Apply ${custom.displayName} to menus, buttons and titles too.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                    )
+                        Switch(
+                            checked = uiFontId == custom.id,
+                            onCheckedChange = { checked ->
+                                onUseFontInUi(if (checked) custom else null)
+                            }
+                        )
+                    }
                 }
             }
 
@@ -448,10 +753,7 @@ private fun ReadingSettingsSheet(
                     AssistChip(
                         onClick = { onDirectionChange(mode) },
                         label = {
-                            Text(
-                                if (mode == directionMode) "✓ ${mode.label}"
-                                else mode.label
-                            )
+                            Text(if (mode == directionMode) "✓ ${mode.label}" else mode.label)
                         }
                     )
                 }
@@ -518,70 +820,10 @@ private fun PreparingDocument(
         )
         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         Text(
-            "Large documents are parsed into lazy blocks off the UI thread • ${formatCharacters(characterCount)}",
+            "Large documents are parsed into lazy blocks off the UI thread • ${characterCount.formatCount()}",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TabsSheet(
-    documents: List<MarkdownDocument>,
-    activeId: String,
-    onDismiss: () -> Unit,
-    onSelect: (String) -> Unit,
-    onClose: (String) -> Unit,
-    onOpen: () -> Unit
-) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Text(
-            text = "Open Markdown tabs",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-        )
-
-        LazyColumn {
-            items(documents, key = { it.id }) { document ->
-                ListItem(
-                    modifier = Modifier.clickable { onSelect(document.id) },
-                    leadingContent = {
-                        Icon(
-                            if (document.id == activeId) Icons.Outlined.CheckCircle
-                            else Icons.Outlined.Description,
-                            contentDescription = null
-                        )
-                    },
-                    headlineContent = {
-                        Text(
-                            document.title,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    supportingContent = { Text(document.saveState.compactLabel()) },
-                    trailingContent = {
-                        IconButton(onClick = { onClose(document.id) }) {
-                            Icon(Icons.Outlined.Close, contentDescription = "Close tab")
-                        }
-                    }
-                )
-            }
-
-            item {
-                TextButton(
-                    onClick = onOpen,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Icon(Icons.Outlined.Add, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Open more Markdown files")
-                }
-            }
-        }
     }
 }
 
@@ -710,17 +952,10 @@ private fun UpdateSheet(
     }
 }
 
-private fun SaveState.compactLabel(): String = when (this) {
+internal fun SaveState.compactLabel(): String = when (this) {
     SaveState.SAVED -> "Saved"
     SaveState.SAVING -> "Saving…"
     SaveState.UNSAVED -> "Unsaved"
     SaveState.READ_ONLY -> "Read-only"
     SaveState.ERROR -> "Save failed"
 }
-
-private fun formatCharacters(count: Int): String = when {
-    count >= 1_000_000 -> String.format(Locale.US, "%.1fM chars", count / 1_000_000f)
-    count >= 1_000 -> String.format(Locale.US, "%.1fK chars", count / 1_000f)
-    else -> "$count chars"
-}
-
