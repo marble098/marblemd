@@ -135,8 +135,8 @@ fun ReaderScreen(
     val restoredPosition = activeReadingPosition.normalized()
     val readerListState = readerListStates.getOrPut(activeDocument.id) {
         LazyListState(
-            initialFirstVisibleItemIndex = restoredPosition.firstVisibleItemIndex,
-            initialFirstVisibleItemScrollOffset = restoredPosition.firstVisibleItemScrollOffset
+            firstVisibleItemIndex = restoredPosition.firstVisibleItemIndex,
+            firstVisibleItemScrollOffset = restoredPosition.firstVisibleItemScrollOffset
         )
     }
     val editorScroll = editorScrollStates.getOrPut(activeDocument.id) { ScrollState(0) }
